@@ -1,0 +1,13 @@
+name: "Continuos Integration Wrapper"
+description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+inputs:
+
+outputs:
+
+runs:
+  using: "composite"
+  steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - run: echo ${{ inputs.args }}
