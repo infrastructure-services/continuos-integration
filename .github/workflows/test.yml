@@ -1,0 +1,12 @@
+on:
+  push:
+
+jobs:
+  test: 
+    runs-on: ubuntu-latest
+    steps:
+      - uses: infrastructure-services/continuos-integration@v2
+        with:
+          args: |
+            test=test
+            test2=test3
