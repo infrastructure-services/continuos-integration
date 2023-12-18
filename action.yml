@@ -45,6 +45,6 @@ runs:
           sonar_token: ${{ inputs.sonar_token }}
           tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Go'
+          sonar_code: 'Python'
           
 
