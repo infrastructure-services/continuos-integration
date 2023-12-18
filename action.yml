@@ -35,26 +35,9 @@ inputs:
     description: "extra tags, ej: 'react-18, microfrontend'"
     default: ""
     required: false
-
-  matrix_version:
-    description: "matrix de pruebas node"
-    required: false
-    default: ""
-
-  ## Build React
-  fontawesome_token: 
-    description: "token de fontawesome"
-    required: false
-    default: ''
 runs:
   using: "composite"
   steps:
-      - name: "Build and Test"
-        uses: architecture-it/actions@react-base
-        with:
-          matrix_version: ${{ inputs.matrix_version }}
-          packages_token: ${{ inputs.github_token }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
       - name: "SonarQube Analyzer"
         uses: architecture-it/actions@sonarqube
         with:
@@ -62,6 +45,6 @@ runs:
           sonar_token: ${{ inputs.sonar_token }}
           tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Js'
+          sonar_code: 'Go'
           
 
