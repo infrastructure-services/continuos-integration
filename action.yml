@@ -1,0 +1,53 @@
+name: "Continuos Integration Wrapper"
+description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+
+inputs:
+  # Github
+  github_username:
+    description: "usuario de github para autenticarse en los packages"
+    required: true
+  github_token:
+    description: "token del usuario con permisos de lectura en packages"
+    required: true
+
+  # Directories
+  workdir_src:
+    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
+    required: false
+    default: './'
+  workdir_test:
+    description: "directorio donde se encuentra los test DEFAULT: ./"
+    required: false
+    default: './'
+
+  # Sonarqube
+  sonar_url: 
+    description: "url sonarqube"
+    required: true
+  sonar_token: 
+    description: "token sonarqube"
+    required: true
+  sonar_custom:
+    description: "config sonar custom"
+    default: ""
+    required: false
+  sonar_tags:
+    description: "extra tags, ej: 'react-18, microfrontend'"
+    default: ""
+    required: false
+runs:
+  using: "composite"
+  steps:
+      - name: "Execute Continuos Integration .NET"
+        uses: architecture-it/actions@sonarqube
+        with:
+          github_username: ${{ inputs.github_username }}
+          github_token: ${{ inputs.github_token }}
+          sonar_url: ${{ inputs.sonar_url }}
+          sonar_token: ${{ inputs.sonar_token }}
+          sonar_code: '.Net'
+          tags: ${{ inputs.sonar_tags}}
+          sonar_custom: ${{ inputs.sonar_custom }}
+          workdir_test: ${{ inputs.workdir_test }}
+          workdir_src: ${{ inputs.workdir_src }}
+
