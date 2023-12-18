@@ -5,6 +5,7 @@ inputs:
   workflow: 
     description: "nombre del workflow a ejecutar"
     required: true
+    
   # Github
   github_username:
     description: "usuario de github para autenticarse en los packages"
@@ -48,23 +49,12 @@ inputs:
     description: "matrix de pruebas node"
     required: false
     default: ""
-  skip_test:
-    description: "permite skipear los procesos de testing"
-    required: false
-    default: 'false' 
+
   ## Build React
   fontawesome_token: 
     description: "token de fontawesome"
     required: false
     default: ''
-  ci:
-    description: "Esta variable forza el chequeo del linter y en caso de fallas rompe el flujo"
-    required: false
-    default: 'false'
-  skip_lint:
-    description: "permite skipear los procesos de linter y formateo"
-    required: false
-    default: 'false'
 
 runs:
   using: "composite"
@@ -122,4 +112,3 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
           workdir_src: ${{ inputs.workdir_src }}
           workdir_test: ${{ inputs.workdir_test }}
-
