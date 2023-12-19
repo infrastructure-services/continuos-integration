@@ -41,7 +41,7 @@ runs:
       id: version
       uses: architecture-it/actions@next-version
       with:
-        github_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
+        github_token: ${{ inputs.github_token }}
         only_version: 'true'
         branches: '${{ steps.semanticBranches.outputs.configureBranch }}'
 
