@@ -30,10 +30,10 @@ runs:
       id: semanticBranches
       run: | 
         echo "The branch name is ${{ steps.branch.outputs.BranchName }}"
-        if [[ "$BranchName" == "main" ]]; then
-          echo "configureBranch=["main"]" >> $GITHUB_OUTPUT
+        if [[ ${{ steps.branch.outputs.BranchName }} == "main" ]]; then
+          echo 'configureBranch=["main"]' >> $GITHUB_OUTPUT
         else
-          echo "configureBranch=["main", {"name": "${{ steps.branch.outputs.BranchName }}", "prerelease": "${{ steps.branch.outputs.BranchName }}"}]" >> $GITHUB_OUTPUT
+          echo 'configureBranch=["main", {"name": "${{ steps.branch.outputs.BranchName }}", "prerelease": "${{ steps.branch.outputs.BranchName }}"}]' >> $GITHUB_OUTPUT
         fi
       shell: bash
 
