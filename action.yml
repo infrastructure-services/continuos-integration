@@ -60,7 +60,7 @@ runs:
   using: "composite"
   steps:
       - name: "Continuos Integration .NET"
-        if: ${{ inputs.workflow == ".NET" || inputs.workflow == ".NET 8"}}
+        if: ${{ inputs.workflow == '.NET' || inputs.workflow == '.NET 8' }}
         uses: infrastructure-services/continuos-integration@net
         with:
           github_username: ${{ inputs.github_username }}
@@ -73,7 +73,7 @@ runs:
           workdir_test: ${{ inputs.workdir_test }}
 
       - name: "Continuos Integration React & Next.js"
-        if: ${{ inputs.workflow == "React" || inputs.workflow == "Next.js"}}
+        if: ${{ inputs.workflow == 'React' || inputs.workflow == 'Next.js'}}
         uses: infrastructure-services/continuos-integration@react
         with: 
           github_username: ${{ inputs.github_username }}
@@ -88,7 +88,7 @@ runs:
           fontawesome_token: ${{ inputs.fontawesome_token }}
           
       - name: "Continuos Integration Golang"
-        if: ${{ inputs.workflow == "Go" }}
+        if: ${{ inputs.workflow == 'Go' }}
         uses: infrastructure-services/continuos-integration@go
         with:
           github_username: ${{ inputs.github_username }}
@@ -101,7 +101,7 @@ runs:
           workdir_test: ${{ inputs.workdir_test }}
 
       - name: "Continuos Integration Python"
-        if: ${{ inputs.workflow == "Python" || inputs.workflow == "Python Data"}}
+        if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'Python Data'}}
         uses: infrastructure-services/continuos-integration@python
         with:
           github_username: ${{ inputs.github_username }}
