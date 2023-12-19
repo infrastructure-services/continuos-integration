@@ -21,46 +21,46 @@ outputs:
 runs:
   using: "composite"
   steps:
-      - name: Get the branch name
-        id: branch
-        run: echo "BranchName=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
-        shell: bash
+    - name: Get the branch name
+      id: branch
+      run: echo "BranchName=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+      shell: bash
 
-      - name: Use the branch name
-        id: semanticBranches
-        run: | 
-          echo "The branch name is ${{ steps.branch.outputs.BranchName }}"
-          if [[ "$BranchName" == "main" ]]; then
-            echo "configureBranch=["main"]" >> $GITHUB_OUTPUT
-          else
-            echo "configureBranch=["main", {"name": "${{ steps.branch.outputs.BranchName }}", "prerelease": "${{ steps.branch.outputs.BranchName }}"}]" >> $GITHUB_OUTPUT
+    - name: Use the branch name
+      id: semanticBranches
+      run: | 
+        echo "The branch name is ${{ steps.branch.outputs.BranchName }}"
+        if [[ "$BranchName" == "main" ]]; then
+          echo "configureBranch=["main"]" >> $GITHUB_OUTPUT
+        else
+          echo "configureBranch=["main", {"name": "${{ steps.branch.outputs.BranchName }}", "prerelease": "${{ steps.branch.outputs.BranchName }}"}]" >> $GITHUB_OUTPUT
         fi
-        shell: bash
+      shell: bash
 
-      - name: "Get Version"
-        id: version
-        uses: architecture-it/actions@next-version
-        with:
-          github_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
-          only_version: 'true'
-          branches: '${{ steps.semanticBranches.outputs.configureBranch }}'
+    - name: "Get Version"
+      id: version
+      uses: architecture-it/actions@next-version
+      with:
+        github_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
+        only_version: 'true'
+        branches: '${{ steps.semanticBranches.outputs.configureBranch }}'
 
-      - name: Valid Version
-        run: |
-          echo "New version: ${{ steps.version.outputs.new-version }}"
-          echo "Prev version: ${{ steps.version.outputs.previous-version }}"
-          
-          # If the new version is empty, then exit
-          if [ -z "${{ steps.version.outputs.new-version }}" ]; then
-            echo "☢☢ No version found, Make sure you've used comentional commits ☢☢"
-            exit 1
-          fi
+    - name: Valid Version
+      run: |
+        echo "New version: ${{ steps.version.outputs.new-version }}"
+        echo "Prev version: ${{ steps.version.outputs.previous-version }}"
+        
+        # If the new version is empty, then exit
+        if [ -z "${{ steps.version.outputs.new-version }}" ]; then
+          echo "☢☢ No version found, Make sure you've used comentional commits ☢☢"
+          exit 1
+        fi
 
-          # If the version is the same, then exit
-          if [ "${{ steps.version.outputs.new-version }}" == "${{ steps.version.outputs.previous-version }}" ]; then
-            echo "☢☢ No changes in version, Make sure you've used comentional commits ☢☢"
-            exit 1
-          fi
+        # If the version is the same, then exit
+        if [ "${{ steps.version.outputs.new-version }}" == "${{ steps.version.outputs.previous-version }}" ]; then
+          echo "☢☢ No changes in version, Make sure you've used comentional commits ☢☢"
+          exit 1
+        fi
 
-        shell: bash
+      shell: bash
 
