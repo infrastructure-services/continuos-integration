@@ -6,7 +6,7 @@ inputs:
   github_token:
     description: "token del usuario con permisos de lectura en packages"
     required: true
-    
+
 outputs:
   version: 
     description: "Numero de versión calculada"
@@ -24,27 +24,26 @@ runs:
       - name: Get the branch name
         id: branch
         run: echo "BranchName=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+        shell: bash
 
       - name: Use the branch name
-        run: echo "The branch name is ${{ steps.branch.output.BranchName }}"
+        id: semanticBranches
+        run: | 
+          echo "The branch name is ${{ steps.branch.outputs.BranchName }}"
+          if [[ "$BranchName" == "main" ]]; then
+            echo "configureBranch=["main"]" >> $GITHUB_OUTPUT
+          else
+            echo "configureBranch=["main", {"name": "${{ steps.branch.outputs.BranchName }}", "prerelease": "${{ steps.branch.outputs.BranchName }}"}]" >> $GITHUB_OUTPUT
+        fi
+        shell: bash
 
       - name: "Get Version"
-        if: steps.branch.output.BranchName == 'main'
         id: version
         uses: architecture-it/actions@next-version
         with:
           github_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
           only_version: 'true'
-          branches: '["main"]'
-
-      - name: "Get Version"
-        if: steps.branch.output.BranchName != 'main'
-        id: version
-        uses: architecture-it/actions@next-version
-        with:
-          github_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
-          only_version: 'true'
-          branches: '["main", {"name": "${{ steps.branch.output.BranchName }}", "prerelease": "${{ steps.branch.output.BranchName }}"}]'
+          branches: '${{ steps.semanticBranches.outputs.configureBranch }}'
 
       - name: Valid Version
         run: |
