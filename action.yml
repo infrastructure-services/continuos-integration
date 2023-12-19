@@ -3,48 +3,65 @@ description: "Este archivo de pipeline de CI/CD es una plantilla genérica dise�
 
 inputs:
   # Github
-  github_username:
-    description: "usuario de github para autenticarse en los packages"
-    required: true
   github_token:
     description: "token del usuario con permisos de lectura en packages"
     required: true
+    
+outputs:
+  version: 
+    description: "Numero de versión calculada"
+    value: ${{ steps.version.outputs.new-version }}
+  previusVersion: 
+    description: "Numero de versión anterior"
+    value: ${{ steps.version.outputs.previous-version }}
+  branchName:
+    description: "Nombre de Branch or Tags"
+    value: ${{ steps.branch.output.BranchName }}
 
-  # Directories
-  workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
-    required: false
-    default: './'
-  workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
-    required: false
-    default: './'
-
-  # Sonarqube
-  sonar_url: 
-    description: "url sonarqube"
-    required: true
-  sonar_token: 
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
 runs:
   using: "composite"
   steps:
-      - name: "SonarQube Analyzer"
-        uses: architecture-it/actions@sonarqube
+      - name: Get the branch name
+        id: branch
+        run: echo "BranchName=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
+
+      - name: Use the branch name
+        run: echo "The branch name is ${{ steps.branch.output.BranchName }}"
+
+      - name: "Get Version"
+        if: steps.branch.output.BranchName == 'main'
+        id: version
+        uses: architecture-it/actions@next-version
         with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Python'
+          github_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
+          only_version: 'true'
+          branches: '["main"]'
+
+      - name: "Get Version"
+        if: steps.branch.output.BranchName != 'main'
+        id: version
+        uses: architecture-it/actions@next-version
+        with:
+          github_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
+          only_version: 'true'
+          branches: '["main", {"name": "${{ steps.branch.output.BranchName }}", "prerelease": "${{ steps.branch.output.BranchName }}"}]'
+
+      - name: Valid Version
+        run: |
+          echo "New version: ${{ steps.version.outputs.new-version }}"
+          echo "Prev version: ${{ steps.version.outputs.previous-version }}"
           
+          # If the new version is empty, then exit
+          if [ -z "${{ steps.version.outputs.new-version }}" ]; then
+            echo "☢☢ No version found, Make sure you've used comentional commits ☢☢"
+            exit 1
+          fi
+
+          # If the version is the same, then exit
+          if [ "${{ steps.version.outputs.new-version }}" == "${{ steps.version.outputs.previous-version }}" ]; then
+            echo "☢☢ No changes in version, Make sure you've used comentional commits ☢☢"
+            exit 1
+          fi
+
+        shell: bash
 
