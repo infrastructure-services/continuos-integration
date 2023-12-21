@@ -1,0 +1,81 @@
+name: 'Orleans helm package'
+inputs:
+  ACR_USERNAME:
+    description: "user de acr"
+    required: true
+    default: ''
+  ACR_PASSWORD:
+    description: "passwrd de acr"
+    required: true
+    default: ''
+  ACR_FULL_NAME:
+    description: "nombre del acr con azurecr.io"
+    required: true
+    default: ''
+  appName:
+    description: "Nombre de la aplicacion (dentro del proyecto)"
+    required: true
+    default: orleans-grain
+  namespace:
+    description: "nombre de namespaces"
+    required: false
+    default: ""
+  teamProject:
+    description: "Nombre del proyecto/equipo"
+    required: true
+    default: qa
+  appVersion:
+    description: "tag para subir imagen"
+    required: true
+    default: latest
+  helmChartVersionLatest:
+     description: "VersionHelm"
+     required: true
+  
+runs:
+  using: "composite"
+  steps:
+      - run: echo 'Inicia el proceso'
+        shell: bash
+      
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.12.3 #Helm 13 tiene un bug
+      
+      - name: Reviso archivos y version helm
+        shell: bash
+        run: |-
+           ls
+           helm version --short
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ${{inputs.namespace}}
+    
+      - name: Helm Lint, verifica helm por errores (deberia ser bloqueante)
+        shell: bash
+        run: |-
+          helmLint="helm lint --values=values.yaml > /dev/null 2>&1"
+          if eval "$helmLint"; then
+             echo "HELM Lint OK - The template folder and values file format is OK";
+          else
+             echo "HELM Lint FAIL - There is a problem with the folder 'templates' or the values file format";
+             exit 1
+          fi
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ inputs.ACR_NAME }}.azurecr.io #ACR_FULL_NAME incluye el azurecr.io
+          username: ${{ inputs.ACR_USERNAME }}
+          password: ${{ inputs.ACR_PASSWORD }}
+      - name: Enpaquetar y subir helm a acr
+        shell: bash
+        run: |-
+          export HELM_EXPERIMENTAL_OCI=1 #Es necesario para el chart save}}
+          helm package --version ${{ inputs.helmChartVersionLatest}} --app-version ${{ inputs.appVersion}} --namespace ${{ inputs.namespace}} .
+          echo '${{ inputs.ACR_PASSWORD }}' | helm registry login ${{ inputs.ACR_FULL_NAME}} --username ${{ inputs.ACR_USERNAME}} --password-stdin
+          helm push ${{inputs.TeamProject}}-${{inputs.appName }}-${{inputs.helmChartVersionLatest}}.tgz  oci://${{inputs.ACR_FULL_NAME }}/helm/ # ${{ inputs.TeamProject}}-${{ inputs.appName}}  # :${{ env.helmChartVersionLatest}}
+
+           
