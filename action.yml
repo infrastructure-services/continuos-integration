@@ -1,11 +1,7 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+name: "Continuos Integration Validations"
+description: "Continuous Integration Validations step."
 
 inputs:
-  workflow: 
-    description: "nombre del workflow a ejecutar"
-    required: true
-    
   # Github
   github_username:
     description: "usuario de github para autenticarse en los packages"
@@ -14,101 +10,18 @@ inputs:
     description: "token del usuario con permisos de lectura en packages"
     required: true
 
-  # Directories
-  workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
-    required: false
-    default: './'
-  workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
-    required: false
-    default: './'
-
-  # Sonarqube
-  sonar_url: 
-    description: "url sonarqube"
-    required: true
-  sonar_token: 
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
-
-  # Build
-  version:
-    description: "version de lenguaje, ej 3.7, 3.8..."
-    required: false
-    default: '3.8'
-  matrix_version:
-    description: "matrix de pruebas node"
-    required: false
-    default: ""
-
-  ## Build React
-  fontawesome_token: 
-    description: "token de fontawesome"
-    required: false
-    default: ''
-
 runs:
   using: "composite"
   steps:
-      - name: "Continuos Integration .NET"
-        if: ${{ inputs.workflow == '.NET' || inputs.workflow == '.NET 8' }}
-        uses: infrastructure-services/continuos-integration@net
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-
-      - name: "Continuos Integration React & Next.js"
-        if: ${{ inputs.workflow == 'React' || inputs.workflow == 'Next.js'}}
-        uses: infrastructure-services/continuos-integration@react
-        with: 
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          matrix_version: ${{ inputs.matrix_version }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          
-      - name: "Continuos Integration Golang"
-        if: ${{ inputs.workflow == 'Go' }}
-        uses: infrastructure-services/continuos-integration@go
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-
-      - name: "Continuos Integration Python"
-        if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'Python Data'}}
-        uses: infrastructure-services/continuos-integration@python
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
+    - name: Comment on PR
+      uses: actions/github-script@v4
+      with:
+        github-token: ${{inputs.github_token}}
+        script: |
+          const issue_number = context.payload.pull_request.number;
+          const repo = context.repo;
+          github.issues.createComment({
+            ...repo,
+            issue_number: issue_number,
+            body: '✨ Continuos Integration Success ✨'
+          });
