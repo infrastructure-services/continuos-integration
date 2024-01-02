@@ -73,7 +73,7 @@ runs:
           workdir_test: ${{ inputs.workdir_test }}
 
       - name: "Continuos Integration React & Next.js"
-        if: ${{ inputs.workflow == 'React' || inputs.workflow == 'Next.js'}}
+        if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Next.js' || inputs.workflow == 'Vite'}}
         uses: infrastructure-services/continuos-integration@react
         with: 
           github_username: ${{ inputs.github_username }}
