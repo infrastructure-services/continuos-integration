@@ -1,20 +1,12 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
-
+name: "SonarQube Analyzer .NET"
+description: "Se realiza el análisis en sonarqube para NET"
 inputs:
-  workflow: 
-    description: "nombre del workflow a ejecutar"
-    required: true
-    
-  # Github
   github_username:
     description: "usuario de github para autenticarse en los packages"
     required: true
   github_token:
     description: "token del usuario con permisos de lectura en packages"
     required: true
-
-  # Directories
   workdir_src:
     description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
     required: false
@@ -23,92 +15,71 @@ inputs:
     description: "directorio donde se encuentra los test DEFAULT: ./"
     required: false
     default: './'
-
-  # Sonarqube
   sonar_url: 
     description: "url sonarqube"
     required: true
   sonar_token: 
     description: "token sonarqube"
     required: true
+  sonar_key:
+    description: "Key del repositorio"
+    required: true
   sonar_custom:
     description: "config sonar custom"
     default: ""
+  dotnet-version: 
+    description: "versiones de dotnet"
     required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
-
-  # Build
-  version:
-    description: "version de lenguaje, ej 3.7, 3.8..."
-    required: false
-    default: '3.8'
-  matrix_version:
-    description: "matrix de pruebas node"
-    required: false
-    default: ""
-
-  ## Build React
-  fontawesome_token: 
-    description: "token de fontawesome"
-    required: false
-    default: ''
-
+    default: "8.0.x"
 runs:
   using: "composite"
   steps:
-      - name: "Continuos Integration .NET"
-        if: ${{ inputs.workflow == '.NET' || inputs.workflow == '.NET 8' }}
-        uses: infrastructure-services/continuos-integration@net
+      - uses: actions/checkout@v4
         with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-      - name: "Continuos Integration React & Next.js"
-        if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Next.js' || inputs.workflow == 'Vite'}}
-        uses: infrastructure-services/continuos-integration@react
-        with: 
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          matrix_version: ${{ inputs.matrix_version }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          
-      - name: "Continuos Integration Golang"
-        if: ${{ inputs.workflow == 'Go' }}
-        uses: infrastructure-services/continuos-integration@go
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
+          distribution: 'microsoft' # See 'Supported distributions' for available options
+          java-version: '17'
+            
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
 
-      - name: "Continuos Integration Python"
-        if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'Python Data'}}
-        uses: infrastructure-services/continuos-integration@python
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
+      - name: Sonarqube Begin
+        run: |
+          dotnet nuget locals -c all
+          dotnet nuget add source https://nuget.pkg.github.com/architecture-it/index.json --name architecture-it -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+          dotnet nuget add source https://nuget.pkg.github.com/operations-innovation/index.json --name operations-innovation -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+          dotnet nuget add source https://nuget.pkg.github.com/customer-experience/index.json --name customer-experience -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+          dotnet nuget add source https://nuget.pkg.github.com/warehouse-andreani/index.json --name warehouse-andreani -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet sonarscanner begin /key:"${{ inputs.sonar_key }}" -d:sonar.login="${{ inputs.sonar_token }}" -d:sonar.host.url="${{ inputs.sonar_url }}" -d:sonar.cs.vstest.reportsPaths=**/*.trx -d:sonar.cs.opencover.reportsPaths=**/coverage.opencover.xml ${{ inputs.sonar_custom}}
+        shell: bash
+
+      - name: Restore 
+        run: dotnet restore
+        shell: bash
+        working-directory: ${{ inputs.workdir_src }}
+
+      - name: Build
+        run: dotnet build
+        shell: bash
+        working-directory: ${{ inputs.workdir_src }}
+
+      - name: Test 
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+        shell: bash
+        run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=unittests.trx" --no-build --no-restore --configuration release 
+        working-directory: ${{ inputs.workdir_test }}
+        
+      - name: Sonarqube end
+        working-directory: ${{ inputs.workdir_src }}
+        run: dotnet sonarscanner end -d:sonar.login="${{ inputs.sonar_token }}"
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ inputs.github_token }}
