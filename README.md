@@ -1,4 +1,4 @@
-# Paths Changes Filter
+# Architecture -it Paths Changes Filter
 
 [GitHub Action](https://github.com/features/actions) that enables conditional execution of workflow steps and jobs, based on the files modified by pull request, on a feature
 branch, or by the recently pushed commits.
@@ -46,7 +46,7 @@ don't allow this because they don't work on a level of individual jobs or steps.
 ## Example
 
 ```yaml
-- uses: dorny/paths-filter@v3
+- uses: architecture-it/actions@paths-filter
   id: changes
   with:
     filters: |
@@ -84,7 +84,7 @@ For more information, see [CHANGELOG](https://github.com/dorny/paths-filter/blob
 ## Usage
 
 ```yaml
-- uses: dorny/paths-filter@v3
+- uses: architecture-it/actions@paths-filter
   with:
     # Defines filters applied to detected changed files.
     # Each filter has a name and a list of rules.
@@ -177,7 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: dorny/paths-filter@v3
+    - uses: architecture-it/actions@paths-filter
       id: filter
       with:
         filters: |
@@ -221,7 +221,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
     # For pull requests it's not necessary to checkout the code
-    - uses: dorny/paths-filter@v3
+    - uses: architecture-it/actions@paths-filter
       id: filter
       with:
         filters: |
@@ -267,7 +267,7 @@ jobs:
       packages: ${{ steps.filter.outputs.changes }}
     steps:
     # For pull requests it's not necessary to checkout the code
-    - uses: dorny/paths-filter@v3
+    - uses: architecture-it/actions@paths-filter
       id: filter
       with:
         filters: |
@@ -309,7 +309,7 @@ jobs:
       pull-requests: read
     steps:
     - uses: actions/checkout@v4
-    - uses: dorny/paths-filter@v3
+    - uses: architecture-it/actions@paths-filter
       id: filter
       with:
         filters: ... # Configure your filters
@@ -334,7 +334,7 @@ jobs:
         # This may save additional git fetch roundtrip if
         # merge-base is found within latest 20 commits
         fetch-depth: 20
-    - uses: dorny/paths-filter@v3
+    - uses: architecture-it/actions@paths-filter
       id: filter
       with:
         base: develop # Change detection against merge-base with this branch
@@ -358,7 +358,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: dorny/paths-filter@v3
+    - uses: architecture-it/actions@paths-filter
       id: filter
       with:
         # Use context to get the branch where commits were pushed.
@@ -392,7 +392,7 @@ jobs:
 
       # Filter to detect which files were modified
       # Changes could be, for example, automatically committed
-    - uses: dorny/paths-filter@v3
+    - uses: architecture-it/actions@paths-filter
       id: filter
       with:
         base: HEAD
@@ -407,7 +407,7 @@ jobs:
   <summary>Define filter rules in own file</summary>
 
 ```yaml
-- uses: dorny/paths-filter@v3
+- uses: architecture-it/actions@paths-filter
       id: filter
       with:
         # Path to file where filters are defined
@@ -420,7 +420,7 @@ jobs:
   <summary>Use YAML anchors to reuse path expression(s) inside another rule</summary>
 
 ```yaml
-- uses: dorny/paths-filter@v3
+- uses: architecture-it/actions@paths-filter
       id: filter
       with:
         # &shared is YAML anchor,
@@ -441,7 +441,7 @@ jobs:
   <summary>Consider if file was added, modified or deleted</summary>
 
 ```yaml
-- uses: dorny/paths-filter@v3
+- uses: architecture-it/actions@paths-filter
       id: filter
       with:
         # Changed file can be 'added', 'modified', or 'deleted'.
@@ -469,7 +469,7 @@ jobs:
   <summary>Passing list of modified files as command line args in Linux shell</summary>
 
 ```yaml
-- uses: dorny/paths-filter@v3
+- uses: architecture-it/actions@paths-filter
   id: filter
   with:
     # Enable listing of files matching each filter.
@@ -495,7 +495,7 @@ jobs:
   <summary>Passing list of modified files as JSON array to another action</summary>
 
 ```yaml
-- uses: dorny/paths-filter@v3
+- uses: architecture-it/actions@paths-filter
   id: filter
   with:
     # Enable listing of files matching each filter.
