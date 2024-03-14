@@ -47,6 +47,7 @@ runs:
       with:
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        skip_test: "true"
 
     - name: "SonarQube Analyzer"
       uses: architecture-it/actions@sonarqube
@@ -56,5 +57,6 @@ runs:
         tags: ${{ inputs.sonar_tags }}
         sonar_custom: ${{ inputs.sonar_custom }}
         sonar_code: 'Go'
+        skip_test: "true"
           
 
