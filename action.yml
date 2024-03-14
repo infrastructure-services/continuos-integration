@@ -14,11 +14,11 @@ inputs:
   workdir_src:
     description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
     required: false
-    default: './src/'
+    default: 'src/'
   workdir_test:
     description: "directorio donde se encuentra los test DEFAULT: ./"
     required: false
-    default: './src/'
+    default: 'src/'
 
   # Sonarqube
   sonar_url: 
