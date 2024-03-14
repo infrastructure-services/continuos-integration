@@ -110,8 +110,6 @@ runs:
           sonar_token: ${{ inputs.sonar_token }}
           sonar_tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
 
       - name: "Continuos Integration Python"
         if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'Python Data'}}
