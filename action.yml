@@ -14,11 +14,11 @@ inputs:
   workdir_src:
     description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
     required: false
-    default: './'
+    default: './src/'
   workdir_test:
     description: "directorio donde se encuentra los test DEFAULT: ./"
     required: false
-    default: './'
+    default: './src/'
 
   # Sonarqube
   sonar_url: 
@@ -44,6 +44,9 @@ runs:
 
     - name: "Build"
       uses: architecture-it/actions@go-base
+      with:
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
 
     - name: "SonarQube Analyzer"
       uses: architecture-it/actions@sonarqube
