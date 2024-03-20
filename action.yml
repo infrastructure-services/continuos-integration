@@ -110,6 +110,8 @@ runs:
           sonar_token: ${{ inputs.sonar_token }}
           sonar_tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
+          workdir_src: ${{ (inputs.workdir_src == './') && 'src/' || inputs.workdir_src }} # se agrega ya que golang necesita el archivo main.go
+          workdir_test: ${{ (inputs.workdir_test == './') && 'src/' || inputs.workdir_test }}
 
       - name: "Continuos Integration Python"
         if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'Python Data'}}
