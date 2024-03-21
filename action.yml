@@ -81,6 +81,19 @@ runs:
             echo "Error: Status code $status_code"
             exit 1
           fi
+      - name: Esperar aprobación
+        if: ${{ failure() }}
+        uses: actions/github-script@v5
+        with:
+          script: |
+            const environment = "QA"
+            const payload = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              environment_name: environment,
+              ref: context.sha
+            }
+            await github.rest.repos.createDeployment(payload)
       - name: "Continuos Integration .NET"
         if: ${{ inputs.workflow == '.NET' }}
         uses: infrastructure-services/continuos-integration@net
