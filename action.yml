@@ -13,6 +13,10 @@ inputs:
   github_token:
     description: "token del usuario con permisos de lectura en packages"
     required: true
+  github_repository:
+    description: "Nombre Del repositorio"
+    required: false
+    default: '${{ github.event.repository.name }}'
 
   # Directories
   workdir_src:
@@ -62,7 +66,7 @@ runs:
       - name: "Consulta al endpoint"
         shell: bash
         run: |-
-          echo "Response HI!"
+          echo "${{ inputs.github_repository }}"
        #   response=$(curl -s -X GET "https://github-integration.andreani.com/api/v1/org/${{ github.repository_owner }}/repository/${{ github.event.repository.name }}")
        #  echo "Response: $response"
       - name: "Continuos Integration .NET"
