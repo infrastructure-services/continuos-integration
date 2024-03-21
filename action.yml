@@ -59,7 +59,7 @@ inputs:
 runs:
   using: "composite"
   steps: 
-      - name: Consulta al endpoint
+      - name: "Consulta al endpoint"
         run: |
           response=$(curl -s -X GET "https://github-integration.andreani.com/api/v1/org/${{ github.repository_owner }}/repository/${{ github.event.repository.name }}")
           echo "Response: $response"
