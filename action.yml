@@ -71,7 +71,7 @@ runs:
         shell: bash
         run: |-
           echo "${{ inputs.github_repository }}"
-          status_code=$(curl -o /dev/null -s -w "%{http_code}\n" "https://github-integration.andreani.com/api/v1/org/${{ inputs.github_repository_owner }}/repository/${{ inputs.github_repository }}")
+          status_code=$(curl -o /dev/null -s -w "%{http_code}\n" --location --head "https://github-integration.andreani.com/api/v1/org/${{ inputs.github_repository_owner }}/repository/${{ inputs.github_repository }}")
           if [ "$status_code" -eq 200 ]; then
             echo "Successful request"
           elif [ "$status_code" -eq 404 ]; then
