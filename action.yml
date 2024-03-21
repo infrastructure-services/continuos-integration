@@ -17,6 +17,10 @@ inputs:
     description: "Nombre Del repositorio"
     required: false
     default: '${{ github.event.repository.name }}'
+  github_repository_owner:
+    description: "Nombre De la Org"
+    required: false
+    default: '${{ github.repository_owner }}'
 
   # Directories
   workdir_src:
@@ -67,8 +71,8 @@ runs:
         shell: bash
         run: |-
           echo "${{ inputs.github_repository }}"
-       #   response=$(curl -s -X GET "https://github-integration.andreani.com/api/v1/org/${{ github.repository_owner }}/repository/${{ github.event.repository.name }}")
-       #  echo "Response: $response"
+          response=$(curl -s -X GET "https://github-integration.andreani.com/api/v1/org/${{ inputs.github_repository_owner }}/repository/${{ inputs.github_repository }}")
+          echo "Response: $response"
       - name: "Continuos Integration .NET"
         if: ${{ inputs.workflow == '.NET' }}
         uses: infrastructure-services/continuos-integration@net
