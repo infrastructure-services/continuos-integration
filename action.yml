@@ -2,6 +2,11 @@ name: "Continuos Integration Wrapper"
 description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
 
 inputs:
+  qa:
+    description: 'QA'
+    required: true
+    type: boolean
+    default: false
   workflow: 
     description: "nombre del workflow a ejecutar"
     required: true
@@ -83,17 +88,10 @@ runs:
       #     fi
       - name: Esperar aprobación
         # if: ${{ failure() }}
-        uses: actions/github-script@v5
-        with:
-          script: |
-            const environment = "QA"
-            const payload = {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              environment_name: environment,
-              ref: context.sha
-            }
-            await github.rest.repos.createDeployment(payload)
+        if: ${{ ! cancelled() && ! failure() && inputs.test }}
+        shell: bash
+        run: |-
+          echo "Hola"
       - name: "Continuos Integration .NET"
         if: ${{ inputs.workflow == '.NET' }}
         uses: infrastructure-services/continuos-integration@net
