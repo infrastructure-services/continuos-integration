@@ -51,6 +51,7 @@ runs:
   steps:
     - name: Checkout
       uses: actions/checkout@v4
+      
     - uses: architecture-it/actions@react-base-library
       with:
         matrix_version:  ${{ inputs.matrix_version }}
@@ -58,6 +59,10 @@ runs:
         # secrets enabled in all organizations
         packages_token: ${{ inputs.github_token }}
         fontawesome_token: ${{ inputs.fontawesome_token }}
+
+    - name: Lint
+      run: yarn lint
+      shell: bash
 
     - name: Unit tests
       if: ${{ env.SKIP_TEST != 'true' }}
