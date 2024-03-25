@@ -125,3 +125,18 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
           workdir_src: ${{ inputs.workdir_src }}
           workdir_test: ${{ inputs.workdir_test }}
+
+      - name: "Continuos Integration React Native"
+        if: ${{ inputs.workflow == 'React Native' }}
+        uses: infrastructure-services/continuos-integration@react-native
+        with:
+          github_username: ${{ inputs.github_username }}
+          github_token: ${{ inputs.github_token }}
+          sonar_url: ${{ inputs.sonar_url }}
+          sonar_token: ${{ inputs.sonar_token }}
+          sonar_tags: ${{ inputs.sonar_tags }}
+          sonar_custom: ${{ inputs.sonar_custom }}
+          workdir_src: ${{ inputs.workdir_src }}
+          workdir_test: ${{ inputs.workdir_test }}
+          matrix_version: ${{ inputs.matrix_version }}
+          fontawesome_token: ${{ inputs.fontawesome_token }}
