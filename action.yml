@@ -49,19 +49,36 @@ inputs:
 runs:
   using: "composite"
   steps:
-      - name: "Build and Test"
-        uses: architecture-it/actions@react-base
-        with:
-          matrix_version: ${{ inputs.matrix_version }}
-          packages_token: ${{ inputs.github_token }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-      - name: "SonarQube Analyzer"
-        uses: architecture-it/actions@sonarqube
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Js'
+    - name: Checkout
+      uses: actions/checkout@v4
+    - uses: architecture-it/actions@react-base-library
+      with:
+        matrix_version:  ${{ inputs.matrix_version }}
+        skip_test: 'false'
+        # secrets enabled in all organizations
+        packages_token: ${{ inputs.github_token }}
+        fontawesome_token: ${{ inputs.fontawesome_token }}
+
+    - name: Unit tests
+      if: ${{ env.SKIP_TEST != 'true' }}
+      run: yarn test --coverage
+      shell: bash
+      env:
+        CI: ${{ env.CI == 'true' }}
+
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
+      with:
+        name: code-coverage-report
+        path: coverage
+
+    - name: "SonarQube Analyzer"
+      uses: architecture-it/actions@sonarqube
+      with:
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        sonar_code: 'React Native'
           
 
