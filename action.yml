@@ -61,7 +61,7 @@ runs:
         fontawesome_token: ${{ inputs.fontawesome_token }}
 
     - name: Lint
-      run: yarn lint
+      run: yarn eslint
       shell: bash
 
     - name: Unit tests
