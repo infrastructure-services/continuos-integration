@@ -73,6 +73,9 @@ runs:
   using: "composite"
   steps: 
       - name: "Consulta al endpoint"
+        env:
+          GITHUB_CONTEXT: ${{ toJSON(github) }}
+        run: echo "$GITHUB_CONTEXT"
         shell: bash
         run: |-
           echo "${{ inputs.github_repository }}"
