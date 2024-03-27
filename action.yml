@@ -76,11 +76,13 @@ runs:
         uses: actions/checkout@v3.5.0
       - name: "Consulta al endpoint"
         env:
-          GITHUB_CONTEXT: ${{ toJSON(github) }}
+          GITHUB_REPONAME: ${{ github.event.repository.name }}
+          GITHUB_ORG: ${{ github.repository_owner }}
         shell: bash 
         run: |-
-          echo $GITHUB_CONTEXT.repository_owner
-          echo "${{ inputs.github_repository }}"
+          echo $GITHUB_REPONAME
+          echo $GITHUB_ORG
+          echo "${{ GITHUB_ORG }}"
           status_code=$(curl -o /dev/null -s -w "%{http_code}\n" --location --head "https://github-integration.andreani.com/api/v1/org/${{ inputs.github_repository_owner }}/repository/${{ inputs.github_repository }}")
           if [ "$status_code" -eq 200 ]; then
             echo "Successful request"
