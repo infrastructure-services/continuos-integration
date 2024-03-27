@@ -77,9 +77,9 @@ runs:
       - name: "Consulta al endpoint"
         env:
           GITHUB_CONTEXT: ${{ toJSON(github) }}
-        shell: bash
-        run: echo "$GITHUB_CONTEXT"
+        shell: bash 
         run: |-
+          echo "$GITHUB_CONTEXT"
           echo "${{ inputs.github_repository }}"
           status_code=$(curl -o /dev/null -s -w "%{http_code}\n" --location --head "https://github-integration.andreani.com/api/v1/org/${{ inputs.github_repository_owner }}/repository/${{ inputs.github_repository }}")
           if [ "$status_code" -eq 200 ]; then
