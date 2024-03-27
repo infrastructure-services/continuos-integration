@@ -18,14 +18,6 @@ inputs:
   github_token:
     description: "token del usuario con permisos de lectura en packages"
     required: true
-  github_repository:
-    description: "Nombre Del repositorio"
-    required: false
-    default: '${{ github.event.repository.name }}'
-  github_repository_owner:
-    description: "Nombre De la Org"
-    required: false
-    default: '${{ github.repository_owner }}'
 
   # Directories
   workdir_src:
