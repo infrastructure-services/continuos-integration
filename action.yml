@@ -35,9 +35,25 @@ inputs:
     description: "extra tags, ej: 'react-18, microfrontend'"
     default: ""
     required: false
+    
+  #python
+  version:
+    description: "Versión de Python, ej. 3.7, 3.8..."
+    required: true
+  skip_test:
+    description: "permite skipear los procesos de testing"
+    required: false
+    default: 'false'
 runs:
   using: "composite"
   steps:
+      - name: "Build"
+        uses: architecture-it/actions@python-base
+        with:
+          workdir_test: ${{ inputs.workdir_test }}
+          version: ${{ inputs.version }}
+          skip_test: ${{ inputs.skip_test }}
+
       - name: "SonarQube Analyzer"
         uses: architecture-it/actions@sonarqube
         with:
@@ -46,5 +62,9 @@ runs:
           tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
           sonar_code: 'Python'
+          workdir_src: ${{ inputs.workdir_src }}
+          workdir_test: ${{ inputs.workdir_test }}
+          version: ${{ inputs.version }}
+          skip_test: ${{ inputs.skip_test }}
           
 
