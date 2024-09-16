@@ -22,9 +22,9 @@ runs:
           
           status_code=$(curl -o /dev/null -s -w "%{http_code}\n" --location --head "${{ inputs.gitOpsUrl }}/api/v1/org/${{ env.GITHUB_OWNER }}/repository/${{ env.GITHUB_REPONAME }}")
           if [ "$status_code" -eq 200 ]; then
-            echo "OK - The application are register in GitOps"
+            echo "OK - The application is registered in GitOps"
           elif [ "$status_code" -eq 404 ]; then
-            echo "Error: The application are not register in GitOps. Send message to devops team"
+            echo "Error: The application is not registered in GitOps. Send message to DevOps team"
             exit 1
           else
             echo "Error: The GitOps response error -> $status_code"
