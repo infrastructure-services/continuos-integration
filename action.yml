@@ -99,7 +99,7 @@ runs:
 
           </details>
 
-          <details open>
+          <details>
             <summary> Detalles de la validación </summary>
 
             - Título del Pull Request: '${pr_name}'
