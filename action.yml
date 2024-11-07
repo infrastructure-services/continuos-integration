@@ -111,7 +111,7 @@ runs:
 
           </details>
 
-          > 👮‍♀️Es **necesario** que cumplas un formato de título para garantizar que el proceso de CICD y JIRA se ejecute correctamente. Ver más en [Documentación][4] 👮‍♂️
+          > 👮‍♀️Es **necesario** que cumplas un formato de título para garantizar que el proceso de CICD y JIRA se ejecute correctamente. Ver más en [Documentación][3] 👮‍♂️
 
           <details>
             <summary> Detalles de la validación ejecutada </summary>
@@ -127,7 +127,6 @@ runs:
           [1]: https://docs.github.com/es/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges#squash-and-merge-your-commits
           [2]: https://docs.github.com/es/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges#merge-your-commits
           [3]: https://architecture-it.github.io/docs/Onboarding/jira/
-          [4]: https://www.conventionalcommits.org/en/v1.0.0/
 
           `;
 
