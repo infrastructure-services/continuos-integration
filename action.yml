@@ -55,7 +55,7 @@ runs:
           const isValidBranchNameForJira = branchName.match(regexOfIssue);
           const someCommitValidForJira = commitMessages.some(message => message.match(regexOfIssue));
 
-          
+
           const titleWillTriggerNewVersion = pr_name.match(regexConventionCommit);
 
           const willTriggerNewVersion = titleWillTriggerNewVersion || someCommitWillTriggerNewVersion;
@@ -67,17 +67,17 @@ runs:
 
 
           const unifiedMessageForCICD = titleWillTriggerNewVersion && someCommitWillTriggerNewVersion 
-              ? '> Podes usar [Squash and merge][1] o [Merge pull request][2].' 
+              ? '> Podes usar [Squash and merge][1] (**Recomendado**) o [Merge pull request][2].' 
               : titleWillTriggerNewVersion 
-              ? '> Podes usar [Squash and merge][1].' 
+              ? '> Podes usar [Squash and merge][1] (**Recomendado**).' 
               : someCommitWillTriggerNewVersion 
               ? '> Podes usar [Merge pull request][2].' 
               : '';
 
           const unifiedMessageForJIRA = isValidTitleOfPRForJira && couldUseMergePullRequestJIRA 
-              ? '> Podes usar [Squash and merge][1] o [Merge pull request][2].' 
+              ? '> Podes usar [Squash and merge][1] (**Recomendado**) o [Merge pull request][2].' 
               : isValidTitleOfPRForJira 
-              ? '> Podes usar [Squash and merge][1].' 
+              ? '> Podes usar [Squash and merge][1] (**Recomendado**).' 
               : couldUseMergePullRequestJIRA
               ? '> Podes usar [Merge pull request][2].' 
               : '';
@@ -96,27 +96,25 @@ runs:
 
           <details open>
           <summary> Convención de commits ${willTriggerNewVersion ? ':white_check_mark:' : ':x:'} </summary>
-          
-            - El título del Pull Request tiene un título válido: ${titleWillTriggerNewVersion ? ':heavy_check_mark:' : ':exclamation:'}.${titleWillTriggerNewVersion ? ' Habilita poder usar [Squash and merge][1]. ' : ''} **Recomendado**.
-            - Alguno de los commits disparará una nueva versión: ${someCommitWillTriggerNewVersion ? ':heavy_check_mark:' : ':exclamation:'}.${someCommitWillTriggerNewVersion ? ' Habilita poder usar [Merge pull request][2]' : ''}
-            
-            Si deseas que dispare una nueva versión debe seguir el siguiente formato: '<feat_o_fix>: message'. Ver más en [Documentación][4]
+
+            - El título del Pull Request tiene un título válido: ${titleWillTriggerNewVersion ? ':heavy_check_mark:' : ':exclamation: **Revisar**'}. **Recomendado**.
+            - Alguno de los commits disparará una nueva versión: ${someCommitWillTriggerNewVersion ? ':heavy_check_mark:' : ':exclamation:'}.
+
           </details>
 
           <details open>
             <summary> Integración con JIRA ${anyJiraIntegrationValid ? ':white_check_mark:' : ':x:'} </summary>
 
-            - Título del Pull Request: ${isValidTitleOfPRForJira ? ':heavy_check_mark:' : ':exclamation:'}.${isValidTitleOfPRForJira ? ' Habilita poder usar [Squash and merge][1]. ' : ''} **Recomendado**.
-            > Recordá revisar que el título del PR quede como mensaje del commit. Por ejemplo: \`feat(ABC-123): Nueva funcionalidad\`.
-            - Nombre del branch: ${isValidBranchNameForJira ? ':heavy_check_mark:' : ':exclamation:'}.${isValidBranchNameForJira ? ' Habilita poder usar [Merge pull request][2]' : ''}
-            - Alguno de los commits tiene una clave de JIRA: ${someCommitValidForJira ? ':heavy_check_mark:' : ':exclamation:'}.${someCommitValidForJira ? ' Habilita poder usar [Merge pull request][2]' : ''}
-
-            Si deseas que se ejecute la automatización debe seguir el siguiente formato: '<feat_o_fix>(<CLAVE_DE_INCIDENCIA>): mensaje' Ver más en [Documentación][3]
+            - Título del Pull Request: ${isValidTitleOfPRForJira ? ':heavy_check_mark:' : ':exclamation: **Revisar**'}. **Recomendado**.
+            - Nombre del branch: ${isValidBranchNameForJira ? ':heavy_check_mark:' : ':exclamation:'}.
+            - Alguno de los commits tiene una clave de JIRA: ${someCommitValidForJira ? ':heavy_check_mark:' : ':exclamation:'}.
 
           </details>
 
+          > 👮‍♀️Es **necesario** que cumplas un formato de título para garantizar que el proceso de CICD y JIRA se ejecute correctamente. Ver más en [Documentación][4] 👮‍♂️
+
           <details>
-            <summary> Detalles de la validación </summary>
+            <summary> Detalles de la validación ejecutada </summary>
 
             - Título del Pull Request: '${pr_name}'
             - Nombre del branch: '${branchName}'
