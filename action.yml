@@ -111,7 +111,8 @@ runs:
 
           </details>
 
-          > 👮‍♀️Es **necesario** que cumplas un formato de título para garantizar que el proceso de CICD y JIRA se ejecute correctamente. Ver más en [Documentación][3] 👮‍♂️
+          > [!IMPORTANT]
+          > 👮‍♀️Es **necesario** que cumplas un formato de título para garantizar que el proceso de CICD y JIRA se ejecute correctamente para hacer [Squash and merge][1] (**Recomendado**). Ver más en [Documentación][3] 👮‍♂️
 
           <details>
             <summary> Detalles de la validación ejecutada </summary>
@@ -136,5 +137,3 @@ runs:
             repo: context.repo.repo,
             body,
           });
-
-    
