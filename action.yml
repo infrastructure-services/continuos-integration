@@ -1,5 +1,5 @@
-name: "Continuos Integration HTML Static Analysis"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+name: "Continuos Integration PHP Static Analysis"
+description: "Este archivo de pipeline de CI/CD para PHP"
 
 inputs:
 
@@ -29,5 +29,5 @@ runs:
           sonar_token: ${{ inputs.sonar_token }}
           tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'html'
+          sonar_code: 'php'
 
