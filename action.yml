@@ -1,24 +1,7 @@
-name: "Continuos Integration Wrapper"
+name: "Continuos Integration HTML Static Analysis"
 description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
 
 inputs:
-  # Github
-  github_username:
-    description: "usuario de github para autenticarse en los packages"
-    required: true
-  github_token:
-    description: "token del usuario con permisos de lectura en packages"
-    required: true
-
-  # Directories
-  workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
-    required: false
-    default: './'
-  workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
-    required: false
-    default: './'
 
   # Sonarqube
   sonar_url: 
@@ -36,32 +19,9 @@ inputs:
     default: ""
     required: false
 
-  matrix_version:
-    description: "matrix de pruebas node"
-    required: false
-    default: ""
-
-  ## Build React
-  fontawesome_token: 
-    description: "token de fontawesome"
-    required: false
-    default: ''
-  ## pnpm version
-  pnpm_version:
-    description: "version de pnpm"
-    required: false
-    default: '8'
-
 runs:
   using: "composite"
   steps:
-      - name: "Build and Test"
-        uses: architecture-it/actions@react-base
-        with:
-          matrix_version: ${{ inputs.matrix_version }}
-          packages_token: ${{ inputs.github_token }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          pnpm_version: ${{ inputs.pnpm_version }}
       - name: "SonarQube Analyzer"
         uses: architecture-it/actions@sonarqube
         with:
@@ -69,5 +29,5 @@ runs:
           sonar_token: ${{ inputs.sonar_token }}
           tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Js'
+          sonar_code: 'html'
 
