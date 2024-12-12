@@ -174,9 +174,18 @@ runs:
           sonar_tags: ${{ inputs.sonar_tags }}
           sonar_custom: ${{ inputs.sonar_custom }}
 
+      - name: "Continuos Integration PHP"
+        if: ${{ inputs.workflow == 'php' }}
+        uses: infrastructure-services/continuos-integration@php
+        with:
+          sonar_url: ${{ inputs.sonar_url }}
+          sonar_token: ${{ inputs.sonar_token }}
+          sonar_tags: ${{ inputs.sonar_tags }}
+          sonar_custom: ${{ inputs.sonar_custom }}
+
       - name: "Validation of Supported Workflows"
-        if: ${{ inputs.workflow != '.NET' && inputs.workflow != '.NET 8' && inputs.workflow != 'CRA' && inputs.workflow != 'Vite' && inputs.workflow != 'Rsbuild' && inputs.workflow != 'Next.js' && inputs.workflow != 'Go' && inputs.workflow != 'Python' && inputs.workflow != 'PythonData' && inputs.workflow != 'React Native' && inputs.workflow != 'html' }}
+        if: ${{ inputs.workflow != '.NET' && inputs.workflow != '.NET 8' && inputs.workflow != 'CRA' && inputs.workflow != 'Vite' && inputs.workflow != 'Rsbuild' && inputs.workflow != 'Next.js' && inputs.workflow != 'Go' && inputs.workflow != 'Python' && inputs.workflow != 'PythonData' && inputs.workflow != 'React Native' && inputs.workflow != 'html' && inputs.workflow != 'php' }}
         run: |
-          echo "::error title='❌Unsupported workflow'::Supported workflows include: '.NET', '.NET 8', 'CRA', 'Vite', 'Rsbuild', 'Next.js', 'Go', 'Python', 'PythonData', 'React Native', 'html'. Please contact the DevOps team for assistance to review the 'WORKFLOW_CI' repository variable."
+          echo "::error title='❌Unsupported workflow'::Supported workflows include: '.NET', '.NET 8', 'CRA', 'Vite', 'Rsbuild', 'Next.js', 'Go', 'Python', 'PythonData', 'React Native', 'html', 'php'. Please contact the DevOps team for assistance to review the 'WORKFLOW_CI' repository variable."
           exit 1
         shell: bash
