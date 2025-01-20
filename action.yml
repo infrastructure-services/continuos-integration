@@ -64,8 +64,8 @@ inputs:
 runs:
   using: "composite"
   steps: 
-      - name: Check Application
-        uses: infrastructure-services/continuos-integration@check-if-exists-app
+      #- name: Check Application
+      #  uses: infrastructure-services/continuos-integration@check-if-exists-app
       - name: "Continuos Integration .NET"
         if: ${{ inputs.workflow == '.NET' }}
         uses: infrastructure-services/continuos-integration@net
