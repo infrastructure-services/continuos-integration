@@ -194,6 +194,7 @@ runs:
         uses: actions/checkout@v4
 
       - name: Obtener tópicos con API
+        shell: bash
         run: |
           echo "********************************"
           echo "***   ACA ARRANCA LO NUEVO   ***"
@@ -203,7 +204,8 @@ runs:
             "https://api.github.com/repos/${GITHUB_REPOSITORY}" | jq -r '.topics | join(", ")')
           echo "TOPICS=$TOPICS" >> $GITHUB_ENV
 
-      - name: Usar los tópicos en el pipeline
+      - name: Informar los tópicos en el pipeline
+        shell: bash
         run: |
           echo "Los tópicos del repositorio son: $TOPICS "
 
