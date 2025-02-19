@@ -189,8 +189,8 @@ runs:
           echo "::error title='❌Unsupported workflow'::Supported workflows include: '.NET', '.NET 8', 'CRA', 'Vite', 'Rsbuild', 'Next.js', 'Go', 'Python', 'PythonData', 'React Native', 'html', 'php'. Please contact the DevOps team for assistance to review the 'WORKFLOW_CI' repository variable."
           exit 1
         shell: bash
-      - name: Checkout del repositorio
-        uses: actions/checkout@v4
+      # - name: Checkout del repositorio
+      #   uses: actions/checkout@v4
 
       - name: Obtener tópicos con API
         shell: bash
