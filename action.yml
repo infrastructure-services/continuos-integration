@@ -42,7 +42,7 @@ inputs:
 
   # Build
   version:
-    description: "version de lenguaje, ej 3.7, 3.8..."
+    description: "version de Python, ej 3.7, 3.8..."
     required: false
     default: '3.8'
   matrix_version:
@@ -149,6 +149,8 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
           workdir_src: ${{ inputs.workdir_src }}
           workdir_test: ${{ inputs.workdir_test }}
+          version: ${{ inputs.version }}
+          
 
       - name: "Continuos Integration React Native"
         if: ${{ inputs.workflow == 'React Native' }}
