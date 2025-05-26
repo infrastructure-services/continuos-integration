@@ -49,6 +49,10 @@ inputs:
     description: "matrix de pruebas node"
     required: false
     default: ""
+    go_version:
+    description: "Versión de Go a instalar para el build"
+    required: false
+    default: 'stable' 
 
   ## Build React
   fontawesome_token: 
@@ -136,20 +140,7 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
           workdir_src: ${{ (inputs.workdir_src == './') && './src' || inputs.workdir_src }} # se agrega ya que golang necesita el archivo main.go
           workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
-          go_version: '1.20'
-
-      - name: "Continuos Integration Golang New Version"
-        if: ${{ inputs.workflow == 'GoStable' }}
-        uses: infrastructure-services/continuos-integration@go
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ (inputs.workdir_src == './') && './src' || inputs.workdir_src }} # se agrega ya que golang necesita el archivo main.go
-          workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
+          go_version: ${{ inputs.go_version }}
 
       - name: "Continuos Integration Python"
         if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData'}}
@@ -200,7 +191,7 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
 
       - name: "Validation of Supported Workflows"
-        if: ${{ inputs.workflow != '.NET' && inputs.workflow != '.NET 8' && inputs.workflow != 'CRA' && inputs.workflow != 'Vite' && inputs.workflow != 'Rsbuild' && inputs.workflow != 'Next.js' && inputs.workflow != 'Go' && inputs.workflow != 'GoStable' && inputs.workflow != 'Python' && inputs.workflow != 'PythonData' && inputs.workflow != 'React Native' && inputs.workflow != 'html' && inputs.workflow != 'php' }}
+        if: ${{ inputs.workflow != '.NET' && inputs.workflow != '.NET 8' && inputs.workflow != 'CRA' && inputs.workflow != 'Vite' && inputs.workflow != 'Rsbuild' && inputs.workflow != 'Next.js' && inputs.workflow != 'Go' && inputs.workflow != 'Python' && inputs.workflow != 'PythonData' && inputs.workflow != 'React Native' && inputs.workflow != 'html' && inputs.workflow != 'php' }}
         run: |
           echo "::error title='❌Unsupported workflow'::Supported workflows include: '.NET', '.NET 8', 'CRA', 'Vite', 'Rsbuild', 'Next.js', 'Go', 'Python', 'PythonData', 'React Native', 'html', 'php'. Please contact the DevOps team for assistance to review the 'WORKFLOW_CI' repository variable."
           exit 1
