@@ -49,7 +49,7 @@ inputs:
     description: "matrix de pruebas node"
     required: false
     default: ""
-    go_version:
+  go_version:
     description: "Versión de Go a instalar para el build"
     required: false
     default: 'stable' 
