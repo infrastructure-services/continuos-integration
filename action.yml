@@ -200,7 +200,7 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
 
       - name: "Validation of Supported Workflows"
-        if: ${{ inputs.workflow != '.NET' && inputs.workflow != '.NET 8' && inputs.workflow != 'CRA' && inputs.workflow != 'Vite' && inputs.workflow != 'Rsbuild' && inputs.workflow != 'Next.js' && inputs.workflow != 'Go' && inputs.workflow != 'Python' && inputs.workflow != 'PythonData' && inputs.workflow != 'React Native' && inputs.workflow != 'html' && inputs.workflow != 'php' }}
+        if: ${{ inputs.workflow != '.NET' && inputs.workflow != '.NET 8' && inputs.workflow != 'CRA' && inputs.workflow != 'Vite' && inputs.workflow != 'Rsbuild' && inputs.workflow != 'Next.js' && inputs.workflow != 'Go' && inputs.workflow != 'GoStable' && inputs.workflow != 'Python' && inputs.workflow != 'PythonData' && inputs.workflow != 'React Native' && inputs.workflow != 'html' && inputs.workflow != 'php' }}
         run: |
           echo "::error title='❌Unsupported workflow'::Supported workflows include: '.NET', '.NET 8', 'CRA', 'Vite', 'Rsbuild', 'Next.js', 'Go', 'Python', 'PythonData', 'React Native', 'html', 'php'. Please contact the DevOps team for assistance to review the 'WORKFLOW_CI' repository variable."
           exit 1
