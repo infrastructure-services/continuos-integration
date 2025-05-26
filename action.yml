@@ -138,7 +138,7 @@ runs:
           workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
           go_version: '1.20'
 
-      - name: "Continuos Integration Golang"
+      - name: "Continuos Integration Golang New Version"
         if: ${{ inputs.workflow == 'GoStable' }}
         uses: infrastructure-services/continuos-integration@go
         with:
