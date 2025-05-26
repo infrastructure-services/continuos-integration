@@ -20,6 +20,12 @@ inputs:
     required: false
     default: 'src/'
 
+  # Build
+  go_version:
+    description: "Versión de Go a instalar para el build"
+    required: false
+    default: 'stable' 
+
   # Sonarqube
   sonar_url: 
     description: "url sonarqube"
@@ -47,6 +53,7 @@ runs:
       with:
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        go_version: ${{ inputs.go_version }}
 
 
     - name: "SonarQube Analyzer"
