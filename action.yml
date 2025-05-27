@@ -1,28 +1,12 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+name: "Set Tags on Sonarqube"
+description: "Este action consulta los tópicos del repositorio y los establece como tags del repo en Sonarqube"
 
 inputs:
-  workflow: 
-    description: "nombre del workflow a ejecutar"
-    required: true
-    
+   
   # Github
-  github_username:
-    description: "usuario de github para autenticarse en los packages"
-    required: true
   github_token:
-    description: "token del usuario con permisos de lectura en packages"
+    description: "token de github"
     required: true
-
-  # Directories
-  workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
-    required: false
-    default: './'
-  workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
-    required: false
-    default: './'
 
   # Sonarqube
   sonar_url: 
@@ -31,173 +15,10 @@ inputs:
   sonar_token: 
     description: "token sonarqube"
     required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
-
-  # Build
-  version:
-    description: "version de Python, ej 3.7, 3.8..."
-    required: false
-    default: '3.8'
-  matrix_version:
-    description: "matrix de pruebas node"
-    required: false
-    default: ""
-  go_version:
-    description: "Versión de Go a instalar para el build"
-    required: false
-    default: 'stable' 
-
-  ## Build React
-  fontawesome_token: 
-    description: "token de fontawesome"
-    required: false
-    default: ''
-  ## pnpm version
-  pnpm_version:
-    description: "version de pnpm"
-    required: false
-    default: '10'
 
 runs:
   using: "composite"
   steps: 
-      - name: Check Application
-        uses: infrastructure-services/continuos-integration@check-if-exists-app
-      - name: "Continuos Integration .NET"
-        if: ${{ inputs.workflow == '.NET' }}
-        uses: infrastructure-services/continuos-integration@net
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-
-      - name: "Continuos Integration .NET 8"
-        if: ${{ inputs.workflow == '.NET 8' }}
-        uses: infrastructure-services/continuos-integration@net-8
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-
-      - name: "Continuos Integration React"
-        if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' }}
-        uses: infrastructure-services/continuos-integration@react
-        with: 
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          matrix_version: ${{ inputs.matrix_version }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          pnpm_version: ${{ inputs.pnpm_version }}
-
-      - name: "Continuos Integration Next.js"
-        if: ${{ inputs.workflow == 'Next.js' }}
-        uses: infrastructure-services/continuos-integration@nextjs
-        with: 
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          matrix_version: ${{ inputs.matrix_version }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          pnpm_version: ${{ inputs.pnpm_version }}
-            
-      - name: "Continuos Integration Golang"
-        if: ${{ inputs.workflow == 'Go' }}
-        uses: infrastructure-services/continuos-integration@go
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ (inputs.workdir_src == './') && './src' || inputs.workdir_src }} # se agrega ya que golang necesita el archivo main.go
-          workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
-          go_version: ${{ inputs.go_version }}
-
-      - name: "Continuos Integration Python"
-        if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData'}}
-        uses: infrastructure-services/continuos-integration@python
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          version: ${{ inputs.version }}
-          
-
-      - name: "Continuos Integration React Native"
-        if: ${{ inputs.workflow == 'React Native' }}
-        uses: infrastructure-services/continuos-integration@react-native
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          matrix_version: ${{ inputs.matrix_version }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-
-      - name: "Continuos Integration HTML"
-        if: ${{ inputs.workflow == 'html' }}
-        uses: infrastructure-services/continuos-integration@html
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-
-      - name: "Continuos Integration PHP"
-        if: ${{ inputs.workflow == 'php' }}
-        uses: infrastructure-services/continuos-integration@php
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-
-      - name: "Validation of Supported Workflows"
-        if: ${{ inputs.workflow != '.NET' && inputs.workflow != '.NET 8' && inputs.workflow != 'CRA' && inputs.workflow != 'Vite' && inputs.workflow != 'Rsbuild' && inputs.workflow != 'Next.js' && inputs.workflow != 'Go' && inputs.workflow != 'Python' && inputs.workflow != 'PythonData' && inputs.workflow != 'React Native' && inputs.workflow != 'html' && inputs.workflow != 'php' }}
-        run: |
-          echo "::error title='❌Unsupported workflow'::Supported workflows include: '.NET', '.NET 8', 'CRA', 'Vite', 'Rsbuild', 'Next.js', 'Go', 'Python', 'PythonData', 'React Native', 'html', 'php'. Please contact the DevOps team for assistance to review the 'WORKFLOW_CI' repository variable."
-          exit 1
-        shell: bash
-      # - name: Checkout del repositorio
-      #   uses: actions/checkout@v4
-
       - name: Obtener tópicos con API
         shell: bash
         run: |
