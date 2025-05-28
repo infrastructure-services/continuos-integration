@@ -66,24 +66,6 @@ runs:
   steps: 
       - name: Checkout
         uses: actions/checkout@v3.5.0
-      - name: "Consulta al endpoint"
-        env:
-          GITHUB_REPONAME: ${{ github.event.repository.name }}
-          GITHUB_OWNER: ${{ github.repository_owner }}
-        shell: bash 
-        run: |-
-          echo $GITHUB_REPONAME
-          echo $GITHUB_OWNER
-          status_code=$(curl -o /dev/null -s -w "%{http_code}\n" --location --head "https://github-integration.andreani.com/api/v1/org/${{ env.GITHUB_OWNER }}/repository/${{ env.GITHUB_REPONAME }}")
-          if [ "$status_code" -eq 200 ]; then
-            echo "Successful request"
-          elif [ "$status_code" -eq 404 ]; then
-            echo "Error: Not found"
-            exit 1
-          else
-            echo "Error: Status code $status_code"
-            exit 1
-          fi
       - name: "Continuos Integration .NET"
         if: ${{ inputs.workflow == '.NET' }}
         uses: infrastructure-services/continuos-integration@net
