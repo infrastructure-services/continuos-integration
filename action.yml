@@ -61,13 +61,13 @@ runs:
 
         # If the new version is empty, then exit
         if [ -z "${{ steps.version.outputs.new-version }}" ]; then
-          echo "☢☢ No version found, Make sure you've used comentional commits ☢☢"
+          echo "::notice::☢☢ No se encontró versión, asegurate de haber usado conventional commits ☢☢"
           exit 1
         fi
 
         # If the version is the same, then exit
         if [ "${{ steps.version.outputs.new-version }}" == "${{ steps.version.outputs.previous-version }}" ]; then
-          echo "☢☢ No changes in version, Make sure you've used comentional commits ☢☢"
+          echo "::notice::☢☢ Sin cambios en la versión,asegurate de haber usado conventional commits ☢☢"
           exit 1
         fi
 
