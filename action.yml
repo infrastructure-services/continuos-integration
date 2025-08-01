@@ -127,8 +127,7 @@ runs:
 
           [1]: https://docs.github.com/es/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges#squash-and-merge-your-commits
           [2]: https://docs.github.com/es/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges#merge-your-commits
-          [3]: https://architecture-it.github.io/docs/Onboarding/jira/
-
+          [3]: https://docs-architecture-it-prod.apps.andreani.com.ar/Onboarding/jira/
           `;
 
           github.rest.issues.createComment({
