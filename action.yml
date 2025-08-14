@@ -34,7 +34,7 @@ runs:
               exit 1
             fi
 
-            if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]];
+            if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
               echo "Error: GitOps response error -> $status_code"
               echo "Reintentando...."
               sleep 60
