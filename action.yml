@@ -19,14 +19,28 @@ runs:
         run: |-
           echo $GITHUB_REPONAME
           echo $GITHUB_OWNER
-          
-          status_code=$(curl -o /dev/null -s -w "%{http_code}\n" --location --head "${{ inputs.gitOpsUrl }}/api/v1/org/${{ env.GITHUB_OWNER }}/repository/${{ env.GITHUB_REPONAME }}")
-          if [ "$status_code" -eq 200 ]; then
-            echo "OK - The application is registered in GitOps"
-          elif [ "$status_code" -eq 404 ]; then
-            echo "Error: The application is not registered in GitOps. Send message to DevOps team"
-            exit 1
-          else
-            echo "Error: The GitOps response error -> $status_code"
-            exit 1
-          fi
+
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          while [[ $ATTEMPT -le $MAX_ATTEMPTS ]]; do
+            echo "🔍 Intento $ATTEMPT de $MAX_ATTEMPTS registro de la app en GitOps..."
+            status_code=$(curl -o /dev/null -s -w "%{http_code}\n" --location --head "${{ inputs.gitOpsUrl }}/api/v1/org/${{ env.GITHUB_OWNER }}/repository/${{ env.GITHUB_REPONAME }}")
+            
+            if [ "$status_code" -eq 200 ]; then
+              echo "OK - The application is registered in GitOps"
+              exit 0
+            elif [ "$status_code" -eq 404 ]; then
+              echo "::warning::❌ The application is not registered in GitOps. Send message to DevOps team"
+              exit 1
+            fi
+
+            if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]];
+              echo "Error: GitOps response error -> $status_code"
+              echo "Reintentando...."
+              sleep 60
+            fi
+            ((ATTEMPT++))
+          done
+          exit 1
+            
+
