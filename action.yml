@@ -10,21 +10,6 @@ inputs:
     description: "Ejecuta el comando sin realizar cambios"
     required: false
     default: "false"
-  # Integracion con Jira Mejorada
-  # todos no son requeridos para habilitar una integración progresiva
-  jira_project_id:
-    description: Jira Project Id (e.g. "PE20"). This will be used as prefix in tickets
-    required: false
-  jira_api_token:
-    description: Jira API Token
-    required: false
-  jira_email:
-    description: Jira Email
-    required: false
-  jira_host_url:
-    description: Jira Host URL
-    required: false
-    default: "https://andreani.atlassian.net"
   # generado con la información de los inputs
   jira_release_name:
     description: "Title of the release name template. This will be used in name of publication in JIRA and followed by version. e.g. 'Test v${version}'"
@@ -54,6 +39,7 @@ runs:
       id: repoName
       run: echo "name=${GITHUB_REPOSITORY##*/}" >> $GITHUB_OUTPUT
       shell: bash
+      if: ${{ inputs.jira_release_name == '' }}
       
     - name: Use the branch name
       id: semanticBranches
@@ -73,7 +59,6 @@ runs:
         github_token: ${{ inputs.github_token }}
         only_version: 'true'
         branches: '${{ steps.semanticBranches.outputs.configureBranch }}' 
-        jira_project_id: ${{ inputs.jira_project_id }}
         jira_release_name: ${{ steps.repoName.outputs.name }}
 
     - name: Valid Version
