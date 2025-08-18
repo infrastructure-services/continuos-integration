@@ -54,7 +54,7 @@ runs:
 
     - name: "Get Version"
       id: version
-      uses: architecture-it/actions@next-version-test-jira
+      uses: architecture-it/actions@next-version
       with:
         github_token: ${{ inputs.github_token }}
         only_version: 'true'
