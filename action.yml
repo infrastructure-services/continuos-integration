@@ -10,6 +10,11 @@ inputs:
     description: "Ejecuta el comando sin realizar cambios"
     required: false
     default: "false"
+  # generado con la información de los inputs
+  jira_release_name:
+    description: "Title of the release name template. This will be used in name of publication in JIRA and followed by version. e.g. 'Test v${version}'"
+    required: false
+    default: ""
 
 outputs:
   version: 
@@ -29,7 +34,13 @@ runs:
       id: branch
       run: echo "BranchName=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
       shell: bash
-
+      
+    - name: Get the branch name
+      id: repoName
+      run: echo "name=${GITHUB_REPOSITORY##*/}" >> $GITHUB_OUTPUT
+      shell: bash
+      if: ${{ inputs.jira_release_name == '' }}
+      
     - name: Use the branch name
       id: semanticBranches
       run: | 
@@ -47,7 +58,8 @@ runs:
       with:
         github_token: ${{ inputs.github_token }}
         only_version: 'true'
-        branches: '${{ steps.semanticBranches.outputs.configureBranch }}'
+        branches: '${{ steps.semanticBranches.outputs.configureBranch }}' 
+        jira_release_name: ${{ steps.repoName.outputs.name }}
 
     - name: Valid Version
       run: |
@@ -72,4 +84,5 @@ runs:
         fi
 
       shell: bash
+
 
