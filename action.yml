@@ -2,10 +2,13 @@ name: 'Validaciones'
 description: 'Valida que los commits y el título del PR cumplan con la convención de JIRA y Conventional Commits'
 author: 'Antony Fagundez <afagundez@andreani.com>'
 inputs:
-  token:
-    description: 'GitHub Access Token'
+  github_username:
+    description: "usuario de github para autenticarse en los packages"
     required: false
-    default: ${{ github.token }}
+    default: 'CybersecurityGLA'
+  github_token:
+    description: "token del usuario con permisos de lectura en packages"
+    required: true
   jira_email:
     description: 'JIRA Email'
     required: true

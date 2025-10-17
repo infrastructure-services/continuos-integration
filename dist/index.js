@@ -310,7 +310,7 @@ const utils_1 = __nccwpck_require__(4802);
 const comment_1 = __nccwpck_require__(1434);
 async function run() {
     var _a, _b, _c, _d, _e, _f;
-    const token = core.getInput('token', { required: true });
+    const token = core.getInput('github_token', { required: true });
     const jiraHost = core.getInput('jira_host', { required: false }) || 'https://andreani.atlassian.net';
     const jiraEmail = core.getInput('jira_email', { required: true });
     const jiraApiToken = core.getInput('jira_api_token', { required: true });
@@ -391,7 +391,7 @@ async function setStatus(octokit, repo, sha, state, description, context = 'Jira
         sha: sha,
         state: state,
         description: description,
-        context, // This is the name of the status check
+        context // This is the name of the status check
     });
 }
 function getErrorMessage(error) {

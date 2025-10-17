@@ -6,7 +6,7 @@ import {extractIssueKeys} from './utils'
 import {commentWithValidation, OctokitWithPlugins} from './comment'
 
 async function run(): Promise<void> {
-  const token = core.getInput('token', {required: true})
+  const token = core.getInput('github_token', {required: true})
   const jiraHost = core.getInput('jira_host', {required: false}) || 'https://andreani.atlassian.net'
   const jiraEmail = core.getInput('jira_email', {required: true})
   const jiraApiToken = core.getInput('jira_api_token', {required: true})
