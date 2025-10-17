@@ -1,138 +1,25 @@
-name: "Continuos Integration Validations"
-description: "Validate Title of Pull Request and Commits, and JIRA Integration"
-
+name: 'Validaciones'
+description: 'Valida que los commits y el título del PR cumplan con la convención de JIRA y Conventional Commits'
+author: 'Antony Fagundez <afagundez@andreani.com>'
 inputs:
-  # Github
-  github_username:
-    description: "usuario de github para autenticarse en los packages"
+  token:
+    description: 'GitHub Access Token'
+    required: false
+    default: ${{ github.token }}
+  jira_email:
+    description: 'JIRA Email'
     required: true
-  github_token:
-    description: "token del usuario con permisos de lectura en packages"
+  jira_api_token:
+    description: 'JIRA API Token'
     required: true
+  jira_host:
+    description: 'JIRA Host URL'
+    required: false
+    default: 'https://andreani.atlassian.net'
 
 runs:
-  using: "composite"
-  steps:
-    - name: Get Name of commits title and branch name
-      id: get_pr_name
-      run: |
-        pr_name=$(jq -r .pull_request.title $GITHUB_EVENT_PATH)
-        branch_name=$(jq -r .pull_request.head.ref $GITHUB_EVENT_PATH)
-        echo "pr_name=$pr_name" >> $GITHUB_ENV
-        echo "branch_name=$branch_name" >> $GITHUB_ENV
-      shell: bash
-
-    - name: Validate Format
-      id: validate_format
-      uses: actions/github-script@v7
-      with:
-        github-token: ${{ inputs.github_token }}
-        script: |
-          const { pr_name, branch_name, commits_messages } = process.env;
-
-
-          const { data: commits } = await github.rest.pulls.listCommits({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            pull_number: context.issue.number,
-          });
-
-          const commitMessages = commits.map(commit => commit.commit.message);
-          const commitMessagesForInfo = commits.map(commit => `> - \`${commit.commit.message}\``).join('\n');
-
-          const regexOfIssue = /[A-Z0-9]+-\d+/g;
-          const regexConventionCommit = /^(feat|fix).*\:\s.*$/g;
-
-          const branchName = branch_name.replace(/refs\/heads\//, '');
-
-          // check if any commit will be trigger a new version
-          const someCommitWillTriggerNewVersion = commitMessages.some(message => message.match(regexConventionCommit));
-
-
-          // JIRA VALIDATIONS
-          const isValidTitleOfPRForJira = pr_name.match(/^(feat|fix)\([A-Z0-9-]+\)\:\s.*$/);
-
-          const isValidBranchNameForJira = branchName.match(regexOfIssue);
-          const someCommitValidForJira = commitMessages.some(message => message.match(regexOfIssue));
-
-
-          const titleWillTriggerNewVersion = pr_name.match(regexConventionCommit);
-
-          const willTriggerNewVersion = titleWillTriggerNewVersion || someCommitWillTriggerNewVersion;
-
-          const couldUseMergePullRequestJIRA = isValidBranchNameForJira || someCommitValidForJira;
-          const anyJiraIntegrationValid = isValidTitleOfPRForJira || couldUseMergePullRequestJIRA;
-
-          const enabledMethodOfMerge = `${titleWillTriggerNewVersion ? 'Squash and merge' : ''}${someCommitWillTriggerNewVersion ? 'Merge pull request' : ''}`;
-
-
-          const unifiedMessageForCICD = titleWillTriggerNewVersion && someCommitWillTriggerNewVersion 
-              ? '> Podes usar [Squash and merge][1] (**Recomendado**) o [Merge pull request][2].' 
-              : titleWillTriggerNewVersion 
-              ? '> Podes usar [Squash and merge][1] (**Recomendado**).' 
-              : someCommitWillTriggerNewVersion 
-              ? '> Podes usar [Merge pull request][2].' 
-              : '';
-
-          const unifiedMessageForJIRA = isValidTitleOfPRForJira && couldUseMergePullRequestJIRA 
-              ? '> Podes usar [Squash and merge][1] (**Recomendado**) o [Merge pull request][2].' 
-              : isValidTitleOfPRForJira 
-              ? '> Podes usar [Squash and merge][1] (**Recomendado**).' 
-              : couldUseMergePullRequestJIRA
-              ? '> Podes usar [Merge pull request][2].' 
-              : '';
-
-
-          const body = `
-
-          # ✨ Continuos Integration Success ✨
-
-          ## Validación de formato y commits de Pull Request
-          ${willTriggerNewVersion ? '\n🚀 **Este Pull Request lanzará una nueva versión**' : ''}
-          ${unifiedMessageForCICD}
-
-          ${anyJiraIntegrationValid ? '🔗 **Este Pull Request cumple con la integración de JIRA**\n' : ''}
-          ${unifiedMessageForJIRA}
-
-          <details open>
-          <summary> Convención de commits ${willTriggerNewVersion ? ':white_check_mark:' : ':x:'} </summary>
-
-            - El título del Pull Request tiene un título válido: ${titleWillTriggerNewVersion ? ':heavy_check_mark:' : ':exclamation: **Revisar**'}. **Recomendado**.
-            - Alguno de los commits disparará una nueva versión: ${someCommitWillTriggerNewVersion ? ':heavy_check_mark:' : ':exclamation:'}.
-
-          </details>
-
-          <details open>
-            <summary> Integración con JIRA ${anyJiraIntegrationValid ? ':white_check_mark:' : ':x:'} </summary>
-
-            - Título del Pull Request: ${isValidTitleOfPRForJira ? ':heavy_check_mark:' : ':exclamation: **Revisar**'}. **Recomendado**.
-            - Nombre del branch: ${isValidBranchNameForJira ? ':heavy_check_mark:' : ':exclamation:'}.
-            - Alguno de los commits tiene una clave de JIRA: ${someCommitValidForJira ? ':heavy_check_mark:' : ':exclamation:'}.
-
-          </details>
-
-          > [!IMPORTANT]
-          > 👮‍♀️Es **necesario** que cumplas un formato de título para garantizar que el proceso de CICD y JIRA se ejecute correctamente para hacer [Squash and merge][1] (**Recomendado**). Ver más en [Documentación][3] 👮‍♂️
-
-          <details>
-            <summary> Detalles de la validación ejecutada </summary>
-
-            - Título del Pull Request: '${pr_name}'
-            - Nombre del branch: '${branchName}'
-
-            - Mensajes de los commits: 
-            ${commitMessagesForInfo}
-
-          </details>
-
-          [1]: https://docs.github.com/es/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges#squash-and-merge-your-commits
-          [2]: https://docs.github.com/es/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/about-pull-request-merges#merge-your-commits
-          [3]: https://docs-architecture-it-prod.apps.andreani.com.ar/Onboarding/jira/
-          `;
-
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body,
-          });
+  using: 'node24'
+  main: 'dist/index.js'
+branding:
+  color: red
+  icon: search
