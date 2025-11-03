@@ -53,6 +53,8 @@ runs:
           workdir_test: ${{ inputs.workdir_test }}
           version: ${{ inputs.version }}
           skip_test: ${{ inputs.skip_test }}
+          github_token: ${{ inputs.github_token }}
+          github_username: ${{ inputs.github_username }}
 
       - name: "SonarQube Analyzer"
         uses: architecture-it/actions@sonarqube
