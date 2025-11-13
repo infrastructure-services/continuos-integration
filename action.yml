@@ -71,7 +71,7 @@ runs:
           dotnet nuget add source https://nuget.pkg.github.com/customer-experience/index.json --name customer-experience -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
           dotnet nuget add source https://nuget.pkg.github.com/warehouse-andreani/index.json --name warehouse-andreani -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
           dotnet nuget add source https://nuget.pkg.github.com/witwot-jms/index.json --name witwot-jms -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
-          dotnet nuget add source https://nuget.pkg.github.com/corporate-solutions-gla/index.json --name witwot-jms -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+          dotnet nuget add source https://nuget.pkg.github.com/corporate-solutions-gla/index.json --name corporate-solutions-gla -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
           dotnet tool install --global dotnet-sonarscanner
           dotnet sonarscanner begin /key:"${{ env.KEY_REPOSITORY }}" -d:sonar.login="${{ inputs.sonar_token }}" -d:sonar.host.url="${{ inputs.sonar_url }}" -d:sonar.cs.vstest.reportsPaths=**/*.trx -d:sonar.cs.opencover.reportsPaths=**/coverage.opencover.xml ${{ inputs.sonar_custom}}
         shell: bash
@@ -99,4 +99,5 @@ runs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ inputs.github_token }}
+
 
