@@ -82,7 +82,20 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
           workdir_src: ${{ inputs.workdir_src }}
           workdir_test: ${{ inputs.workdir_test }}
-
+          
+      - name: "Continuos Integration .NET 10"
+        if: ${{ inputs.workflow == '.NET 10' }}
+        uses: infrastructure-services/continuos-integration@net-8
+        with:
+          github_username: ${{ inputs.github_username }}
+          github_token: ${{ inputs.github_token }}
+          sonar_url: ${{ inputs.sonar_url }}
+          sonar_token: ${{ inputs.sonar_token }}
+          sonar_custom: ${{ inputs.sonar_custom }}
+          workdir_src: ${{ inputs.workdir_src }}
+          workdir_test: ${{ inputs.workdir_test }}
+          dotnet-version: '10.0.x'
+          
       - name: "Continuos Integration .NET 8"
         if: ${{ inputs.workflow == '.NET 8' }}
         uses: infrastructure-services/continuos-integration@net-8
@@ -94,6 +107,7 @@ runs:
           sonar_custom: ${{ inputs.sonar_custom }}
           workdir_src: ${{ inputs.workdir_src }}
           workdir_test: ${{ inputs.workdir_test }}
+          dotnet-version: '8.0.x'
 
       - name: "Continuos Integration React"
         if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' }}
@@ -208,5 +222,6 @@ runs:
           echo "::error title='❌Unsupported workflow'::Supported workflows include: '.NET', '.NET 8', 'CRA', 'Vite', 'Rsbuild', 'Next.js', 'Go', 'Python', 'PythonData', 'React Native', 'html', 'php'. Please contact the DevOps team for assistance to review the 'WORKFLOW_CI' repository variable."
           exit 1
         shell: bash
+
 
 
