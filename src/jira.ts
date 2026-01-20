@@ -1,8 +1,7 @@
-import {Version2Client, Version3Client} from 'jira.js'
+import {Version3Client} from 'jira.js'
 
 type MakeClient = {
-  client2: Version2Client
-  client3: Version3Client
+  client: Version3Client
 }
 
 export function makeClient(
@@ -11,17 +10,7 @@ export function makeClient(
   jiraApiToken: string,
   logger?: (message: string) => void
 ): MakeClient {
-  const client2 = new Version2Client({
-    host,
-    authentication: {
-      basic: {
-        email: jiraEmail,
-        apiToken: jiraApiToken
-      }
-    }
-  })
-
-  const client3 = new Version3Client({
+  const client = new Version3Client({
     host,
     authentication: {
       basic: {
@@ -47,7 +36,6 @@ export function makeClient(
   })
 
   return {
-    client2,
-    client3
+    client
   }
 }

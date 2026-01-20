@@ -73,3 +73,29 @@ pull_request -> main.ts
   |-> commentWithValidation (comment.ts)
 ```
 
+## Diagrama de Flujo
+```mermaid
+flowchart TD
+  PR[Evento pull_request] --> Main[main.ts]
+  Main --> Pending["setStatus('pending')"]
+  Main --> Commits[listCommits]
+  Commits --> Messages[Mensajes de commits + título PR]
+  Messages --> Extract[extractIssueKeys]
+  Extract -->|Sin claves| FailNoKeys["setStatus('failure') y fin"]
+  Extract -->|Con claves| Jira[makeClient + issueSearch.countIssues]
+  Jira -->|count == 0| FailCount["setStatus('failure')"]
+  Jira -->|count > 0| Success["setStatus('success')"]
+  Success --> Comment[commentWithValidation]
+  FailCount --> Comment
+```
+
+## Documentación funcional
+- **`src/main.ts`**: Orquesta la validación del PR, publica estados (`pending/success/failure`) y crea/actualiza el comentario. Ver [docs/main.md](docs/main.md).
+- **`src/jira.ts`**: Expone `makeClient` para autenticar y consultar Jira (V2/V3) con middlewares de logging. Ver [docs/jira.md](docs/jira.md).
+- **`src/utils.ts`**: `extractIssueKeys` para extraer claves de Jira desde título/commits con regex genérico. Ver [docs/utils.md](docs/utils.md).
+- **`src/comment.ts`**: Construye comentario detallado en español con validaciones de CI/CD y JIRA, y determina el tipo de versión (`major|minor|patch`). Ver [docs/comment.md](docs/comment.md).
+- **`src/definitions.d.ts`**: Declaraciones de tipos para integración futura con `semantic-release-jira`. Ver [docs/definitions.md](docs/definitions.md).
+
+## Documentación de `comment.ts`
+- Resumen detallado del módulo, parámetros, validaciones y ejemplo de uso: ver [docs/comment.md](docs/comment.md).
+

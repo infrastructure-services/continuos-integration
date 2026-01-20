@@ -15,10 +15,6 @@ inputs:
   jira_api_token:
     description: 'JIRA API Token'
     required: true
-  jira_host:
-    description: 'JIRA Host URL'
-    required: false
-    default: 'https://andreani.atlassian.net'
 
 runs:
   using: 'node24'

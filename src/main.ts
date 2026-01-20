@@ -5,16 +5,16 @@ import {makeClient} from './jira'
 import {extractIssueKeys} from './utils'
 import {commentWithValidation, OctokitWithPlugins} from './comment'
 
-async function run(): Promise<void> {
+export async function run(): Promise<void> {
   const token = core.getInput('github_token', {required: true})
-  const jiraHost = core.getInput('jira_host', {required: false}) || 'https://andreani.atlassian.net'
+  const jiraHost = 'https://andreani.atlassian.net'
   const jiraEmail = core.getInput('jira_email', {required: true})
   const jiraApiToken = core.getInput('jira_api_token', {required: true})
   const octokit = github.getOctokit(token)
 
   if (github.context.eventName !== 'pull_request') {
     // ends gracefully if not a PR event
-    core.warning('This action is only applicable for pull request events.')
+    core.warning('Esta acción solo se puede ejecutar en eventos de pull request.')
     return
   }
 
@@ -22,7 +22,7 @@ async function run(): Promise<void> {
   const repo = github.context.repo
   const branchName = github.context.payload.pull_request?.head?.ref
 
-  await setStatus(octokit, repo, sha, 'pending', 'Analyzing pull request for Jira issues')
+  await setStatus(octokit, repo, sha, 'pending', 'Analizando pull request para issues de Jira')
 
   try {
     const prTitle = github.context.payload.pull_request?.title
@@ -55,43 +55,55 @@ async function run(): Promise<void> {
     core.info(`Found issues: ${Array.from(issues).join(', ')}`)
 
     if (issues.size === 0) {
-      core.info('No Jira issue keys found in commit messages or PR title.')
-      await setStatus(octokit, repo, sha, 'failure', 'No Jira issue keys found in commits or PR title.')
+      core.info('No se encontraron claves de issues de Jira en los commits o en el título del PR.')
+      await setStatus(
+        octokit,
+        repo,
+        sha,
+        'failure',
+        'No se encontraron claves de issues de Jira en los commits o en el título del PR.'
+      )
       return
     }
 
-    const {client2: jiraClient, client3: jiraClient3} = makeClient(jiraHost, jiraEmail, jiraApiToken, core.debug)
+    const {client} = makeClient(jiraHost, jiraEmail, jiraApiToken, core.debug)
 
-    if (!jiraClient) {
-      core.error('Jira client could not be created. Please check your configuration.')
-      await setStatus(octokit, repo, sha, 'failure', 'Jira client could not be created.')
+    if (!client) {
+      core.error('No se pudo crear el cliente de Jira. Por favor, verifica tu configuración.')
+      await setStatus(octokit, repo, sha, 'failure', 'No se pudo crear el cliente de Jira.')
       return
     }
 
     let count = 0
 
     try {
-      const data = await jiraClient3.issueSearch.countIssues({
+      const data = await client.issueSearch.countIssues({
         jql: `issue in (${Array.from(issues).join(', ')})`
       })
       count = data?.count || 0
     } catch (error) {
-      await setStatus(octokit, repo, sha, 'failure', 'Error calling Jira API.')
-      console.error('Error fetching issues from Jira:', getErrorMessage(error))
+      await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al consultar los issues en Jira.')
+      console.error('Error obteniendo los issues en JIRA:', getErrorMessage(error))
       return
     }
 
     if (count === 0) {
-      await setStatus(octokit, repo, sha, 'failure', 'No matching Jira issues found.')
+      await setStatus(
+        octokit,
+        repo,
+        sha,
+        'failure',
+        'No se encontraron issues de Jira coincidentes. Recuerda que los issues deben existir en Jira y deben estar activos'
+      )
     } else {
-      core.info(`Found ${count} matching Jira issues.`)
-      await setStatus(octokit, repo, sha, 'success', `Found ${count} matching Jira issues.`)
+      core.info(`Se encontraron ${count} issues de Jira.`)
+      await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues de Jira.`)
     }
 
     await commentWithValidation(prTitle || '', branchName || '', octokit as unknown as OctokitWithPlugins)
   } catch (error) {
+    await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al procesar el pull request.')
     core.setFailed(getErrorMessage(error))
-    await setStatus(octokit, repo, sha, 'failure', 'An error occurred while validating Jira issues.')
   }
 }
 
