@@ -75,20 +75,22 @@ export async function run(): Promise<void> {
     }
 
     let count = 0
+    let issuesFound = []
 
     try {
-      const data = await client.issueSearch.countIssues({
-        jql: `issue in (${Array.from(issues).join(', ')})`
-      })
-      count = data.count as number
-
       const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
         jql: `issue in (${Array.from(issues).join(', ')})`,
         fields: ['summary', 'status', 'assignee']
       })
 
-      detail?.issues?.forEach(issue => {
-        core.debug(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`)
+      count = detail.issues?.length as number
+
+      issuesFound = detail.issues || []
+
+      core.group('Detalle de Issues', async () => {
+        detail?.issues?.forEach(issue => {
+          core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`)
+        })
       })
     } catch (error) {
       await setStatus(
@@ -98,7 +100,7 @@ export async function run(): Promise<void> {
         'failure',
         'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos'
       )
-      console.error('Error obteniendo los issues en JIRA:', getErrorMessage(error))
+      core.error(`Error obteniendo los issues en JIRA: ${getErrorMessage(error)}`)
       return
     }
 
@@ -112,7 +114,13 @@ export async function run(): Promise<void> {
       )
     } else {
       core.info(`Se encontraron ${count} issues de Jira.`)
-      await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues de Jira.`)
+      await setStatus(
+        octokit,
+        repo,
+        sha,
+        'success',
+        `Se encontraron los siguientes issues [${issuesFound.map(issue => issue.key).join(', ')}]`
+      )
     }
 
     await commentWithValidation(prTitle || '', branchName || '', octokit as unknown as OctokitWithPlugins)

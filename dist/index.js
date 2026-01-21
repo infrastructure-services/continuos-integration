@@ -350,22 +350,24 @@ async function run() {
             return;
         }
         let count = 0;
+        let issuesFound = [];
         try {
-            const data = await client.issueSearch.countIssues({
-                jql: `issue in (${Array.from(issues).join(', ')})`
-            });
-            count = data.count;
             const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
                 jql: `issue in (${Array.from(issues).join(', ')})`,
                 fields: ['summary', 'status', 'assignee']
             });
-            (_g = detail === null || detail === void 0 ? void 0 : detail.issues) === null || _g === void 0 ? void 0 : _g.forEach(issue => {
-                core.debug(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`);
+            count = (_g = detail.issues) === null || _g === void 0 ? void 0 : _g.length;
+            issuesFound = detail.issues || [];
+            core.group('Detalle de Issues', async () => {
+                var _a;
+                (_a = detail === null || detail === void 0 ? void 0 : detail.issues) === null || _a === void 0 ? void 0 : _a.forEach(issue => {
+                    core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`);
+                });
             });
         }
         catch (error) {
             await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos');
-            console.error('Error obteniendo los issues en JIRA:', getErrorMessage(error));
+            core.error(`Error obteniendo los issues en JIRA: ${getErrorMessage(error)}`);
             return;
         }
         if (count === 0) {
@@ -373,7 +375,7 @@ async function run() {
         }
         else {
             core.info(`Se encontraron ${count} issues de Jira.`);
-            await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues de Jira.`);
+            await setStatus(octokit, repo, sha, 'success', `Se encontraron los siguientes issues [${issuesFound.map(issue => issue.key).join(', ')}]`);
         }
         await (0, comment_1.commentWithValidation)(prTitle || '', branchName || '', octokit);
     }

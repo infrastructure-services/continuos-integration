@@ -10,7 +10,8 @@ describe('run() in src/main.ts', () => {
     info: jest.fn(),
     error: jest.fn(),
     debug: jest.fn(),
-    setFailed: jest.fn()
+    setFailed: jest.fn(),
+    group: jest.fn((title: string, fn: Function) => fn())
   }
 
   const createCommitStatus = jest.fn().mockResolvedValue({})
@@ -112,6 +113,9 @@ describe('run() in src/main.ts', () => {
     extractIssueKeys.mockReturnValueOnce(new Set(['ACP-123']))
     // Jira returns count 1
     countIssues.mockResolvedValueOnce({count: 1})
+    searchForIssuesUsingJqlEnhancedSearch.mockResolvedValueOnce({
+      issues: [{key: 'ACP-123', fields: {summary: 'something', status: {name: 'Open'}}}]
+    })
     mockModules()
 
     await isolateImportMain()
@@ -121,7 +125,7 @@ describe('run() in src/main.ts', () => {
     expect(createCommitStatus.mock.calls[0][0]).toMatchObject({state: 'pending'})
     expect(createCommitStatus.mock.calls[1][0]).toMatchObject({
       state: 'success',
-      description: 'Se encontraron 1 issues de Jira.'
+      description: 'Se encontraron los siguientes issues [ACP-123]'
     })
 
     // comment invoked with PR title and branch name
