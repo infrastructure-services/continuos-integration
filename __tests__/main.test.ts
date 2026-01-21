@@ -1,8 +1,3 @@
-import type {Config} from 'jest'
-
-// We will mock external dependencies used by src/main.ts
-// and validate the side effects (commit statuses, logs, comments).
-
 describe('run() in src/main.ts', () => {
   const coreMock = {
     getInput: jest.fn((name: string) => {
@@ -34,10 +29,12 @@ describe('run() in src/main.ts', () => {
 
   const extractIssueKeys = jest.fn(() => new Set<string>())
   const countIssues = jest.fn().mockResolvedValue({count: 0})
+  const searchForIssuesUsingJqlEnhancedSearch = jest.fn().mockResolvedValue({issues: []})
   const makeClient = jest.fn(() => ({
     client: {
       issueSearch: {
-        countIssues
+        countIssues,
+        searchForIssuesUsingJqlEnhancedSearch
       }
     }
   }))
@@ -134,6 +131,7 @@ describe('run() in src/main.ts', () => {
   test('sets failure when Jira returns zero matches', async () => {
     extractIssueKeys.mockReturnValueOnce(new Set(['ACP-123']))
     countIssues.mockResolvedValueOnce({count: 0})
+    searchForIssuesUsingJqlEnhancedSearch.mockResolvedValueOnce({issues: []})
     mockModules()
 
     await isolateImportMain()

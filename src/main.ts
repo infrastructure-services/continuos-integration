@@ -80,9 +80,24 @@ export async function run(): Promise<void> {
       const data = await client.issueSearch.countIssues({
         jql: `issue in (${Array.from(issues).join(', ')})`
       })
-      count = data?.count || 0
+      count = data.count as number
+
+      const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+        jql: `issue in (${Array.from(issues).join(', ')})`,
+        fields: ['summary', 'status', 'assignee']
+      })
+
+      detail?.issues?.forEach(issue => {
+        console.log(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`)
+      })
     } catch (error) {
-      await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al consultar los issues en Jira.')
+      await setStatus(
+        octokit,
+        repo,
+        sha,
+        'failure',
+        'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos'
+      )
       console.error('Error obteniendo los issues en JIRA:', getErrorMessage(error))
       return
     }

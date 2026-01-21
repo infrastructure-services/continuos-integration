@@ -222,16 +222,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.makeClient = makeClient;
 const jira_js_1 = __nccwpck_require__(6627);
 function makeClient(host, jiraEmail, jiraApiToken, logger) {
-    const client2 = new jira_js_1.Version2Client({
-        host,
-        authentication: {
-            basic: {
-                email: jiraEmail,
-                apiToken: jiraApiToken
-            }
-        }
-    });
-    const client3 = new jira_js_1.Version3Client({
+    const client = new jira_js_1.Version3Client({
         host,
         authentication: {
             basic: {
@@ -256,8 +247,7 @@ function makeClient(host, jiraEmail, jiraApiToken, logger) {
         }
     });
     return {
-        client2,
-        client3
+        client
     };
 }
 
@@ -303,27 +293,28 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.run = run;
 const core = __importStar(__nccwpck_require__(6966));
 const github = __importStar(__nccwpck_require__(9512));
 const jira_1 = __nccwpck_require__(4519);
 const utils_1 = __nccwpck_require__(4802);
 const comment_1 = __nccwpck_require__(1434);
 async function run() {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     const token = core.getInput('github_token', { required: true });
-    const jiraHost = core.getInput('jira_host', { required: false }) || 'https://andreani.atlassian.net';
+    const jiraHost = 'https://andreani.atlassian.net';
     const jiraEmail = core.getInput('jira_email', { required: true });
     const jiraApiToken = core.getInput('jira_api_token', { required: true });
     const octokit = github.getOctokit(token);
     if (github.context.eventName !== 'pull_request') {
         // ends gracefully if not a PR event
-        core.warning('This action is only applicable for pull request events.');
+        core.warning('Esta acción solo se puede ejecutar en eventos de pull request.');
         return;
     }
     const sha = github.context.sha; // Commit SHA for the status check
     const repo = github.context.repo;
     const branchName = (_b = (_a = github.context.payload.pull_request) === null || _a === void 0 ? void 0 : _a.head) === null || _b === void 0 ? void 0 : _b.ref;
-    await setStatus(octokit, repo, sha, 'pending', 'Analyzing pull request for Jira issues');
+    await setStatus(octokit, repo, sha, 'pending', 'Analizando pull request para issues de Jira');
     try {
         const prTitle = (_c = github.context.payload.pull_request) === null || _c === void 0 ? void 0 : _c.title;
         const prNumber = (_d = github.context.payload.pull_request) === null || _d === void 0 ? void 0 : _d.number;
@@ -348,40 +339,47 @@ async function run() {
         const issues = (0, utils_1.extractIssueKeys)(commitMessages);
         core.info(`Found issues: ${Array.from(issues).join(', ')}`);
         if (issues.size === 0) {
-            core.info('No Jira issue keys found in commit messages or PR title.');
-            await setStatus(octokit, repo, sha, 'failure', 'No Jira issue keys found in commits or PR title.');
+            core.info('No se encontraron claves de issues de Jira en los commits o en el título del PR.');
+            await setStatus(octokit, repo, sha, 'failure', 'No se encontraron claves de issues de Jira en los commits o en el título del PR.');
             return;
         }
-        const { client2: jiraClient, client3: jiraClient3 } = (0, jira_1.makeClient)(jiraHost, jiraEmail, jiraApiToken, core.debug);
-        if (!jiraClient) {
-            core.error('Jira client could not be created. Please check your configuration.');
-            await setStatus(octokit, repo, sha, 'failure', 'Jira client could not be created.');
+        const { client } = (0, jira_1.makeClient)(jiraHost, jiraEmail, jiraApiToken, core.debug);
+        if (!client) {
+            core.error('No se pudo crear el cliente de Jira. Por favor, verifica tu configuración.');
+            await setStatus(octokit, repo, sha, 'failure', 'No se pudo crear el cliente de Jira.');
             return;
         }
         let count = 0;
         try {
-            const data = await jiraClient3.issueSearch.countIssues({
+            const data = await client.issueSearch.countIssues({
                 jql: `issue in (${Array.from(issues).join(', ')})`
             });
-            count = (data === null || data === void 0 ? void 0 : data.count) || 0;
+            count = data.count;
+            const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+                jql: `issue in (${Array.from(issues).join(', ')})`,
+                fields: ['summary', 'status', 'assignee']
+            });
+            (_g = detail === null || detail === void 0 ? void 0 : detail.issues) === null || _g === void 0 ? void 0 : _g.forEach(issue => {
+                console.log(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`);
+            });
         }
         catch (error) {
-            await setStatus(octokit, repo, sha, 'failure', 'Error calling Jira API.');
-            console.error('Error fetching issues from Jira:', getErrorMessage(error));
+            await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos');
+            console.error('Error obteniendo los issues en JIRA:', getErrorMessage(error));
             return;
         }
         if (count === 0) {
-            await setStatus(octokit, repo, sha, 'failure', 'No matching Jira issues found.');
+            await setStatus(octokit, repo, sha, 'failure', 'No se encontraron issues de Jira coincidentes. Recuerda que los issues deben existir en Jira y deben estar activos');
         }
         else {
-            core.info(`Found ${count} matching Jira issues.`);
-            await setStatus(octokit, repo, sha, 'success', `Found ${count} matching Jira issues.`);
+            core.info(`Se encontraron ${count} issues de Jira.`);
+            await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues de Jira.`);
         }
         await (0, comment_1.commentWithValidation)(prTitle || '', branchName || '', octokit);
     }
     catch (error) {
+        await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al procesar el pull request.');
         core.setFailed(getErrorMessage(error));
-        await setStatus(octokit, repo, sha, 'failure', 'An error occurred while validating Jira issues.');
     }
 }
 async function setStatus(octokit, repo, sha, state, description, context = 'Jira Issue Validation') {
