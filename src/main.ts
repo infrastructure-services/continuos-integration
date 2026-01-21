@@ -52,7 +52,7 @@ export async function run(): Promise<void> {
     }
     const issues = extractIssueKeys(commitMessages)
 
-    core.info(`Found issues: ${Array.from(issues).join(', ')}`)
+    core.info(`Found issues in PR: ${Array.from(issues).join(', ')}`)
 
     if (issues.size === 0) {
       core.info('No se encontraron claves de issues de Jira en los commits o en el título del PR.')
@@ -104,14 +104,10 @@ export async function run(): Promise<void> {
       return
     }
 
+    const detailsInMessage = issues.size > 0 && count === 0 ? ' válidos y activos.' : '.'
+
     if (count === 0) {
-      await setStatus(
-        octokit,
-        repo,
-        sha,
-        'failure',
-        'No se encontraron issues de Jira coincidentes. Recuerda que los issues deben existir en Jira y deben estar activos'
-      )
+      await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`)
     } else {
       core.info(`Se encontraron ${count} issues de Jira.`)
       await setStatus(
@@ -119,7 +115,7 @@ export async function run(): Promise<void> {
         repo,
         sha,
         'success',
-        `Se encontraron los siguientes issues [${issuesFound.map(issue => issue.key).join(', ')}]`
+        `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`
       )
     }
 

@@ -337,7 +337,7 @@ async function run() {
             commitMessages.push(prTitle);
         }
         const issues = (0, utils_1.extractIssueKeys)(commitMessages);
-        core.info(`Found issues: ${Array.from(issues).join(', ')}`);
+        core.info(`Found issues in PR: ${Array.from(issues).join(', ')}`);
         if (issues.size === 0) {
             core.info('No se encontraron claves de issues de Jira en los commits o en el título del PR.');
             await setStatus(octokit, repo, sha, 'failure', 'No se encontraron claves de issues de Jira en los commits o en el título del PR.');
@@ -370,12 +370,13 @@ async function run() {
             core.error(`Error obteniendo los issues en JIRA: ${getErrorMessage(error)}`);
             return;
         }
+        const detailsInMessage = issues.size > 0 && count === 0 ? ' válidos y activos.' : '.';
         if (count === 0) {
-            await setStatus(octokit, repo, sha, 'failure', 'No se encontraron issues de Jira coincidentes. Recuerda que los issues deben existir en Jira y deben estar activos');
+            await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`);
         }
         else {
             core.info(`Se encontraron ${count} issues de Jira.`);
-            await setStatus(octokit, repo, sha, 'success', `Se encontraron los siguientes issues [${issuesFound.map(issue => issue.key).join(', ')}]`);
+            await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`);
         }
         await (0, comment_1.commentWithValidation)(prTitle || '', branchName || '', octokit);
     }

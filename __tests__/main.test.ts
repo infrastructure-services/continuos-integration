@@ -125,7 +125,7 @@ describe('run() in src/main.ts', () => {
     expect(createCommitStatus.mock.calls[0][0]).toMatchObject({state: 'pending'})
     expect(createCommitStatus.mock.calls[1][0]).toMatchObject({
       state: 'success',
-      description: 'Se encontraron los siguientes issues [ACP-123]'
+      description: 'Se encontraron 1 issues [ACP-123]'
     })
 
     // comment invoked with PR title and branch name
@@ -143,8 +143,7 @@ describe('run() in src/main.ts', () => {
     expect(createCommitStatus).toHaveBeenCalledTimes(2)
     expect(createCommitStatus.mock.calls[1][0]).toMatchObject({
       state: 'failure',
-      description:
-        'No se encontraron issues de Jira coincidentes. Recuerda que los issues deben existir en Jira y deben estar activos'
+      description: 'No se encontraron issues de Jira válidos y activos.'
     })
   })
 })
