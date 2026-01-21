@@ -360,7 +360,7 @@ async function run() {
                 fields: ['summary', 'status', 'assignee']
             });
             (_g = detail === null || detail === void 0 ? void 0 : detail.issues) === null || _g === void 0 ? void 0 : _g.forEach(issue => {
-                console.log(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`);
+                core.debug(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`);
             });
         }
         catch (error) {

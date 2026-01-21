@@ -88,7 +88,7 @@ export async function run(): Promise<void> {
       })
 
       detail?.issues?.forEach(issue => {
-        console.log(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`)
+        core.debug(`Issue ${issue.key}: ${issue.fields.summary} - Status: ${issue.fields.status.name}`)
       })
     } catch (error) {
       await setStatus(
