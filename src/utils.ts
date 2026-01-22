@@ -1,5 +1,5 @@
 export function extractIssueKeys(messages: string[]): Set<string> {
-  const issueKeyRegex = /\b[A-Z][A-Z0-9]*-\d+\b/g
+  const issueKeyRegex = /\b[A-Z][A-Z0-9]*-\d+\b/gi
   const issues = new Set<string>()
 
   for (const message of messages) {

@@ -800,4 +800,9 @@ describe('extractIssueKeys', () => {
 
     expect(result.has(issueKey)).toBeTruthy()
   })
+  test('returns a key if are lower case or mixed case', () => {
+    const messages = ['fixes abc-123', 'related to XyZ-456', 'no issue here']
+    const result = extractIssueKeys(messages)
+    expect(result).toEqual(new Set(['abc-123', 'XyZ-456']))
+  })
 })
