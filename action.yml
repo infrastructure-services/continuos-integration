@@ -82,7 +82,7 @@ runs:
         working-directory: ${{ inputs.workdir_src }}
 
       - name: Build
-        run: dotnet build -p:NoWarn=CA1873%3bCA1707
+        run: dotnet build
         shell: bash
         working-directory: ${{ inputs.workdir_src }}
 
@@ -99,6 +99,7 @@ runs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ inputs.github_token }}
+
 
 
 
