@@ -413,7 +413,7 @@ run();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.extractIssueKeys = extractIssueKeys;
 function extractIssueKeys(messages) {
-    const issueKeyRegex = /\b[A-Z][A-Z0-9]*-\d+\b/g;
+    const issueKeyRegex = /\b[A-Z][A-Z0-9]*-\d+\b/gi;
     const issues = new Set();
     for (const message of messages) {
         const matches = message.match(issueKeyRegex);
