@@ -80,7 +80,7 @@ runs:
         run: dotnet restore
         shell: bash
         working-directory: ${{ inputs.workdir_src }}
-        
+
       - name: Add editorconfig
         run: |
           echo root = true >> .editorconfig
@@ -92,7 +92,7 @@ runs:
         shell: bash
         working-directory: ${{ inputs.workdir_src }}
       - name: Build
-        run: dotnet build "/p:NoWarn=CA1873;CA1707;CS1591"
+        run: dotnet build
         shell: bash
         working-directory: ${{ inputs.workdir_src }}
 
