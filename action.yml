@@ -88,6 +88,7 @@ runs:
           echo dotnet_diagnostic.CA1873.severity = none >> .editorconfig
           echo dotnet_diagnostic.CA1707.severity = none >> .editorconfig
           echo dotnet_diagnostic.CS1591.severity = none >> .editorconfig
+          echo dotnet_diagnostic.ORLEANS0010.severity = none >> .editorconfig
 
         shell: bash
         working-directory: ${{ inputs.workdir_src }}
