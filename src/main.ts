@@ -8,8 +8,8 @@ import {commentWithValidation, OctokitWithPlugins} from './comment'
 export async function run(): Promise<void> {
   const token = core.getInput('github_token', {required: true})
   const jiraHost = 'https://andreani.atlassian.net'
-  const jiraEmail = core.getInput('jira_email', {required: true})
-  const jiraApiToken = core.getInput('jira_api_token', {required: true})
+  const jiraEmail = core.getInput('jira_email', {required: false})
+  const jiraApiToken = core.getInput('jira_api_token', {required: false})
   const octokit = github.getOctokit(token)
 
   if (github.context.eventName !== 'pull_request') {
@@ -66,57 +66,63 @@ export async function run(): Promise<void> {
       return
     }
 
-    const {client} = makeClient(jiraHost, jiraEmail, jiraApiToken, core.debug)
-
-    if (!client) {
-      core.error('No se pudo crear el cliente de Jira. Por favor, verifica tu configuración.')
-      await setStatus(octokit, repo, sha, 'failure', 'No se pudo crear el cliente de Jira.')
+    if (!jiraEmail || !jiraApiToken) {
+      core.error('Las credenciales de Jira no están configuradas correctamente.')
+      await setStatus(octokit, repo, sha, 'failure', 'Las credenciales de Jira no están configuradas correctamente.')
       return
-    }
-
-    let count = 0
-    let issuesFound = []
-
-    try {
-      const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
-        jql: `issue in (${Array.from(issues).join(', ')})`,
-        fields: ['summary', 'status', 'assignee']
-      })
-
-      count = detail.issues?.length as number
-
-      issuesFound = detail.issues || []
-
-      core.group('Detalle de Issues', async () => {
-        detail?.issues?.forEach(issue => {
-          core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`)
-        })
-      })
-    } catch (error) {
-      await setStatus(
-        octokit,
-        repo,
-        sha,
-        'failure',
-        'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos'
-      )
-      core.error(`Error obteniendo los issues en JIRA: ${getErrorMessage(error)}`)
-      return
-    }
-
-    const detailsInMessage = issues.size > 0 && count === 0 ? ' válidos y activos.' : '.'
-
-    if (count === 0) {
-      await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`)
     } else {
-      core.info(`Se encontraron ${count} issues de Jira.`)
-      await setStatus(
-        octokit,
-        repo,
-        sha,
-        'success',
-        `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`
-      )
+      const {client} = makeClient(jiraHost, jiraEmail, jiraApiToken, core.debug)
+
+      if (!client) {
+        core.error('No se pudo crear el cliente de Jira. Por favor, verifica tu configuración.')
+        await setStatus(octokit, repo, sha, 'failure', 'No se pudo crear el cliente de Jira.')
+        return
+      }
+
+      let count = 0
+      let issuesFound = []
+
+      try {
+        const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+          jql: `issue in (${Array.from(issues).join(', ')})`,
+          fields: ['summary', 'status', 'assignee']
+        })
+
+        count = detail.issues?.length as number
+
+        issuesFound = detail.issues || []
+
+        core.group('Detalle de Issues', async () => {
+          detail?.issues?.forEach(issue => {
+            core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`)
+          })
+        })
+      } catch (error) {
+        await setStatus(
+          octokit,
+          repo,
+          sha,
+          'failure',
+          'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos'
+        )
+        core.error(`Error obteniendo los issues en JIRA: ${getErrorMessage(error)}`)
+        return
+      }
+
+      const detailsInMessage = issues.size > 0 && count === 0 ? ' válidos y activos.' : '.'
+
+      if (count === 0) {
+        await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`)
+      } else {
+        core.info(`Se encontraron ${count} issues de Jira.`)
+        await setStatus(
+          octokit,
+          repo,
+          sha,
+          'success',
+          `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`
+        )
+      }
     }
 
     await commentWithValidation(prTitle || '', branchName || '', octokit as unknown as OctokitWithPlugins)

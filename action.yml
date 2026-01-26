@@ -11,10 +11,12 @@ inputs:
     required: true
   jira_email:
     description: 'JIRA Email'
-    required: true
+    required: false
+    default: ''
   jira_api_token:
     description: 'JIRA API Token'
-    required: true
+    required: false
+    default: ''
 
 runs:
   using: 'node24'

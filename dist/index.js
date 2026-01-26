@@ -303,8 +303,8 @@ async function run() {
     var _a, _b, _c, _d, _e, _f, _g;
     const token = core.getInput('github_token', { required: true });
     const jiraHost = 'https://andreani.atlassian.net';
-    const jiraEmail = core.getInput('jira_email', { required: true });
-    const jiraApiToken = core.getInput('jira_api_token', { required: true });
+    const jiraEmail = core.getInput('jira_email', { required: false });
+    const jiraApiToken = core.getInput('jira_api_token', { required: false });
     const octokit = github.getOctokit(token);
     if (github.context.eventName !== 'pull_request') {
         // ends gracefully if not a PR event
@@ -343,40 +343,47 @@ async function run() {
             await setStatus(octokit, repo, sha, 'failure', 'No se encontraron claves de issues de Jira en los commits o en el título del PR.');
             return;
         }
-        const { client } = (0, jira_1.makeClient)(jiraHost, jiraEmail, jiraApiToken, core.debug);
-        if (!client) {
-            core.error('No se pudo crear el cliente de Jira. Por favor, verifica tu configuración.');
-            await setStatus(octokit, repo, sha, 'failure', 'No se pudo crear el cliente de Jira.');
+        if (!jiraEmail || !jiraApiToken) {
+            core.error('Las credenciales de Jira no están configuradas correctamente.');
+            await setStatus(octokit, repo, sha, 'failure', 'Las credenciales de Jira no están configuradas correctamente.');
             return;
-        }
-        let count = 0;
-        let issuesFound = [];
-        try {
-            const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
-                jql: `issue in (${Array.from(issues).join(', ')})`,
-                fields: ['summary', 'status', 'assignee']
-            });
-            count = (_g = detail.issues) === null || _g === void 0 ? void 0 : _g.length;
-            issuesFound = detail.issues || [];
-            core.group('Detalle de Issues', async () => {
-                var _a;
-                (_a = detail === null || detail === void 0 ? void 0 : detail.issues) === null || _a === void 0 ? void 0 : _a.forEach(issue => {
-                    core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`);
-                });
-            });
-        }
-        catch (error) {
-            await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos');
-            core.error(`Error obteniendo los issues en JIRA: ${getErrorMessage(error)}`);
-            return;
-        }
-        const detailsInMessage = issues.size > 0 && count === 0 ? ' válidos y activos.' : '.';
-        if (count === 0) {
-            await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`);
         }
         else {
-            core.info(`Se encontraron ${count} issues de Jira.`);
-            await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`);
+            const { client } = (0, jira_1.makeClient)(jiraHost, jiraEmail, jiraApiToken, core.debug);
+            if (!client) {
+                core.error('No se pudo crear el cliente de Jira. Por favor, verifica tu configuración.');
+                await setStatus(octokit, repo, sha, 'failure', 'No se pudo crear el cliente de Jira.');
+                return;
+            }
+            let count = 0;
+            let issuesFound = [];
+            try {
+                const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
+                    jql: `issue in (${Array.from(issues).join(', ')})`,
+                    fields: ['summary', 'status', 'assignee']
+                });
+                count = (_g = detail.issues) === null || _g === void 0 ? void 0 : _g.length;
+                issuesFound = detail.issues || [];
+                core.group('Detalle de Issues', async () => {
+                    var _a;
+                    (_a = detail === null || detail === void 0 ? void 0 : detail.issues) === null || _a === void 0 ? void 0 : _a.forEach(issue => {
+                        core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`);
+                    });
+                });
+            }
+            catch (error) {
+                await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos');
+                core.error(`Error obteniendo los issues en JIRA: ${getErrorMessage(error)}`);
+                return;
+            }
+            const detailsInMessage = issues.size > 0 && count === 0 ? ' válidos y activos.' : '.';
+            if (count === 0) {
+                await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`);
+            }
+            else {
+                core.info(`Se encontraron ${count} issues de Jira.`);
+                await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`);
+            }
         }
         await (0, comment_1.commentWithValidation)(prTitle || '', branchName || '', octokit);
     }
