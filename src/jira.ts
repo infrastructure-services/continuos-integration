@@ -39,3 +39,8 @@ export function makeClient(
     client
   }
 }
+
+export function isValidIssue(status = ''): boolean {
+  const invalidStatuses = ['Implementado', 'Cerrado']
+  return !invalidStatuses.includes(status)
+}

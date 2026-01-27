@@ -220,6 +220,7 @@ function determineReleaseType(commitMessage) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.makeClient = makeClient;
+exports.isValidIssue = isValidIssue;
 const jira_js_1 = __nccwpck_require__(6627);
 function makeClient(host, jiraEmail, jiraApiToken, logger) {
     const client = new jira_js_1.Version3Client({
@@ -249,6 +250,10 @@ function makeClient(host, jiraEmail, jiraApiToken, logger) {
     return {
         client
     };
+}
+function isValidIssue(status = '') {
+    const invalidStatuses = ['Implementado', 'Cerrado'];
+    return !invalidStatuses.includes(status);
 }
 
 
@@ -300,7 +305,7 @@ const jira_1 = __nccwpck_require__(4519);
 const utils_1 = __nccwpck_require__(4802);
 const comment_1 = __nccwpck_require__(1434);
 async function run() {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const token = core.getInput('github_token', { required: true });
     const jiraHost = 'https://andreani.atlassian.net';
     const jiraEmail = core.getInput('jira_email', { required: false });
@@ -356,20 +361,19 @@ async function run() {
                 return;
             }
             let count = 0;
-            let issuesFound = [];
             try {
                 const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
                     jql: `issue in (${Array.from(issues).join(', ')})`,
                     fields: ['summary', 'status', 'assignee']
                 });
-                count = (_g = detail.issues) === null || _g === void 0 ? void 0 : _g.length;
-                issuesFound = detail.issues || [];
                 core.group('Detalle de Issues', async () => {
                     var _a;
                     (_a = detail === null || detail === void 0 ? void 0 : detail.issues) === null || _a === void 0 ? void 0 : _a.forEach(issue => {
                         core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`);
                     });
                 });
+                detail.issues = (_g = detail.issues) === null || _g === void 0 ? void 0 : _g.filter(issue => (0, jira_1.isValidIssue)(issue.fields.status.name));
+                count = (_h = detail.issues) === null || _h === void 0 ? void 0 : _h.length;
             }
             catch (error) {
                 await setStatus(octokit, repo, sha, 'failure', 'Ha ocurrido un error al consultar los issues en Jira. Recuerda que los issues deben existir en Jira y deben estar activos');
@@ -381,8 +385,10 @@ async function run() {
                 await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`);
             }
             else {
-                core.info(`Se encontraron ${count} issues de Jira.`);
-                await setStatus(octokit, repo, sha, 'success', `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`);
+                const message = count === 1 ? ` issue válido y activo.` : ' issues válidos y activos.';
+                const action = count === 1 ? 'Se encontró' : 'Se encontraron';
+                core.info(`${action} ${count} issues de Jira.`);
+                await setStatus(octokit, repo, sha, 'success', `${action} ${count}${message}`);
             }
         }
         await (0, comment_1.commentWithValidation)(prTitle || '', branchName || '', octokit);

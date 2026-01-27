@@ -41,6 +41,8 @@ describe('run() in src/main.ts', () => {
   }))
   const commentWithValidation = jest.fn().mockResolvedValue(undefined)
 
+  const isValidIssue = jest.fn((status: string) => status !== 'Cerrado' && status !== 'Implementado')
+
   const mockModules = () => {
     jest.doMock('@actions/core', () => coreMock)
     jest.doMock('@actions/github', () => ({
@@ -48,7 +50,7 @@ describe('run() in src/main.ts', () => {
       context: contextMock
     }))
     jest.doMock('../src/utils', () => ({extractIssueKeys}))
-    jest.doMock('../src/jira', () => ({makeClient}))
+    jest.doMock('../src/jira', () => ({makeClient, isValidIssue}))
     jest.doMock('../src/comment', () => ({commentWithValidation}))
   }
 
@@ -125,7 +127,7 @@ describe('run() in src/main.ts', () => {
     expect(createCommitStatus.mock.calls[0][0]).toMatchObject({state: 'pending'})
     expect(createCommitStatus.mock.calls[1][0]).toMatchObject({
       state: 'success',
-      description: 'Se encontraron 1 issues [ACP-123]'
+      description: 'Se encontró 1 issue válido y activo.'
     })
 
     // comment invoked with PR title and branch name
@@ -145,5 +147,64 @@ describe('run() in src/main.ts', () => {
       state: 'failure',
       description: 'No se encontraron issues de Jira válidos y activos.'
     })
+  })
+
+  test('sets success when Jira issues exist and show plural message', async () => {
+    // Found issues
+    extractIssueKeys.mockReturnValueOnce(new Set(['ACP-123', 'ACP-456']))
+    // Jira returns count 2
+    countIssues.mockResolvedValueOnce({count: 2})
+    searchForIssuesUsingJqlEnhancedSearch.mockResolvedValueOnce({
+      issues: [
+        {key: 'ACP-123', fields: {summary: 'something', status: {name: 'Open'}}},
+        {key: 'ACP-456', fields: {summary: 'something else', status: {name: 'Open'}}}
+      ]
+    })
+    mockModules()
+
+    await isolateImportMain()
+
+    // pending then success
+    expect(createCommitStatus).toHaveBeenCalledTimes(2)
+    expect(createCommitStatus.mock.calls[0][0]).toMatchObject({state: 'pending'})
+    expect(createCommitStatus.mock.calls[1][0]).toMatchObject({
+      state: 'success',
+      description: 'Se encontraron 2 issues válidos y activos.'
+    })
+
+    // comment invoked with PR title and branch name
+    expect(commentWithValidation).toHaveBeenCalledWith('feat: something nice', 'feature-branch', expect.any(Object))
+  })
+
+  test('should filter correctly if issue have invalid state', async () => {
+    // Found issues
+    extractIssueKeys.mockReturnValueOnce(new Set(['ACP-123', 'ACP-456', 'ACP-789']))
+    // Jira returns count 3
+    countIssues.mockResolvedValueOnce({count: 3})
+    searchForIssuesUsingJqlEnhancedSearch.mockResolvedValueOnce({
+      issues: [
+        {key: 'ACP-123', fields: {summary: 'something', status: {name: 'Open'}}},
+        {key: 'ACP-456', fields: {summary: 'something else', status: {name: 'Implementado'}}},
+        {key: 'ACP-789', fields: {summary: 'something else', status: {name: 'Cerrado'}}}
+      ]
+    })
+    mockModules()
+
+    await isolateImportMain()
+
+    // expect core.info to be called with all issues found in API
+    expect(coreMock.info).toHaveBeenCalledWith('[ACP-123]: something | Status: Open')
+    expect(coreMock.info).toHaveBeenCalledWith('[ACP-456]: something else | Status: Implementado')
+    expect(coreMock.info).toHaveBeenCalledWith('[ACP-789]: something else | Status: Cerrado')
+    // pending then success
+    expect(createCommitStatus).toHaveBeenCalledTimes(2)
+    expect(createCommitStatus.mock.calls[0][0]).toMatchObject({state: 'pending'})
+    expect(createCommitStatus.mock.calls[1][0]).toMatchObject({
+      state: 'success',
+      description: 'Se encontró 1 issue válido y activo.'
+    })
+
+    // comment invoked with PR title and branch name
+    expect(commentWithValidation).toHaveBeenCalledWith('feat: something nice', 'feature-branch', expect.any(Object))
   })
 })

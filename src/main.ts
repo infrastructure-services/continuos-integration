@@ -1,7 +1,7 @@
 import * as core from '@actions/core'
 import * as github from '@actions/github'
 
-import {makeClient} from './jira'
+import {isValidIssue, makeClient} from './jira'
 import {extractIssueKeys} from './utils'
 import {commentWithValidation, OctokitWithPlugins} from './comment'
 
@@ -80,7 +80,6 @@ export async function run(): Promise<void> {
       }
 
       let count = 0
-      let issuesFound = []
 
       try {
         const detail = await client.issueSearch.searchForIssuesUsingJqlEnhancedSearch({
@@ -88,15 +87,15 @@ export async function run(): Promise<void> {
           fields: ['summary', 'status', 'assignee']
         })
 
-        count = detail.issues?.length as number
-
-        issuesFound = detail.issues || []
-
         core.group('Detalle de Issues', async () => {
           detail?.issues?.forEach(issue => {
             core.info(`[${issue.key}]: ${issue.fields.summary} | Status: ${issue.fields.status.name}`)
           })
         })
+
+        detail.issues = detail.issues?.filter(issue => isValidIssue(issue.fields.status.name))
+
+        count = detail.issues?.length as number
       } catch (error) {
         await setStatus(
           octokit,
@@ -114,14 +113,10 @@ export async function run(): Promise<void> {
       if (count === 0) {
         await setStatus(octokit, repo, sha, 'failure', `No se encontraron issues de Jira${detailsInMessage}`)
       } else {
-        core.info(`Se encontraron ${count} issues de Jira.`)
-        await setStatus(
-          octokit,
-          repo,
-          sha,
-          'success',
-          `Se encontraron ${count} issues [${issuesFound.map(issue => issue.key).join(', ')}]`
-        )
+        const message = count === 1 ? ` issue válido y activo.` : ' issues válidos y activos.'
+        const action = count === 1 ? 'Se encontró' : 'Se encontraron'
+        core.info(`${action} ${count} issues de Jira.`)
+        await setStatus(octokit, repo, sha, 'success', `${action} ${count}${message}`)
       }
     }
 
