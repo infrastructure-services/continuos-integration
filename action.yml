@@ -1,73 +1,174 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
-
+name: "✨ React CI"
+description: "Realiza el lint, build, test and coverage"
 inputs:
-  # Github
-  github_username:
-    description: "usuario de github para autenticarse en los packages"
-    required: true
-  github_token:
-    description: "token del usuario con permisos de lectura en packages"
-    required: true
-
-  # Directories
-  workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
-    required: false
-    default: './'
-  workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
-    required: false
-    default: './'
-
-  # Sonarqube
-  sonar_url: 
-    description: "url sonarqube"
-    required: true
-  sonar_token: 
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
-
   matrix_version:
     description: "matrix de pruebas node"
-    required: false
-    default: ""
-
-  ## Build React
+    required: true
   fontawesome_token: 
     description: "token de fontawesome"
     required: false
     default: ''
-  ## pnpm version
-  pnpm_version:
-    description: "version de pnpm"
+  packages_token:
+    description: "token github para autenticarse en packages"
     required: false
-    default: '8'
+    default: ''
+  skip_test:
+    description: "permite skipear los procesos de testing"
+    required: false
+    default: 'false' 
+  ci:
+    description: "Esta variable forza el chequeo del linter y en caso de fallas rompe el flujo"
+    required: false
+    default: 'false'
+  skip_lint:
+    description: "permite skipear los procesos de linter y formateo"
+    required: false
+    default: 'false'
+  cache:
+    description: "permite cachear la carpeta node_modules"
+    required: false
+    default: 'true'
+  pnpm_version:
+    description: "version default pnpm"
+    required: false
+    default: '9'
+  need_report:
+    description: "Indica si se necesita un reporte detallado de lint y test"
+    required: false
+    default: 'false'
 
 runs:
   using: "composite"
   steps:
-      - name: "Build and Test"
-        uses: architecture-it/actions@react-base
-        with:
-          matrix_version: ${{ inputs.matrix_version }}
-          packages_token: ${{ inputs.github_token }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          pnpm_version: ${{ inputs.pnpm_version }}
-      - name: "SonarQube Analyzer"
-        uses: architecture-it/actions@sonarqube
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Js'
+    - name: Get package manager and install command
+      run: |
+        if [ -f "yarn.lock" ]; then 
+          echo "name=yarn" >> $GITHUB_OUTPUT 
+          echo "command=yarn install --frozen-lockfile" >> $GITHUB_OUTPUT 
+          echo "lock_file=yarn.lock" >> $GITHUB_OUTPUT
+        elif [ -f "package-lock.json" ]; then 
+          echo "name=npm" >> $GITHUB_OUTPUT 
+          echo "command=npm ci --no-progress --loglevel error" >> $GITHUB_OUTPUT 
+          echo "lock_file=package-lock.json" >> $GITHUB_OUTPUT
+        elif [ -f pnpm-lock.yaml ]; then 
+          echo "name=pnpm" >> $GITHUB_OUTPUT 
+          echo "command=pnpm install --frozen-lockfile" >> $GITHUB_OUTPUT 
+          echo "lock_file=pnpm-lock.yaml" >> $GITHUB_OUTPUT
+        else 
+          echo "name=notfound" >> $GITHUB_OUTPUT
+        fi
+      id: package_manager
+      shell: bash
+    - name: validate 'Lockfile'
+      if: ${{ steps.package_manager.outputs.name == 'notfound' }}
+      run: |
+        echo "El código debe contener algún archivo de lockfile ('package-lock.json', 'yarn.lock' o 'pnpm-lock.yaml')."
+        echo "Asegurate de subirlo."
+        echo "ERROR: Falta archivo lockfile. Ver más en https://architecture-it.github.io/docs/Platform/Front/#manejo-de-dependencias"
+        exit 1
+      shell: bash    
+      # Use default with cache
+    - name: Use pnpm Setup
+      uses: pnpm/action-setup@v4
+      with:
+        version: ${{ inputs.pnpm_version }}
+      if: ${{ steps.package_manager.outputs.name == 'pnpm' }}
+    - name: Use Node.js ${{ inputs.matrix_version }} - Cache ${{ steps.package_manager.outputs.name }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.matrix_version }}
+        cache: ${{ steps.package_manager.outputs.name }}     
+    - name: Generate .npmrc file
+      uses: architecture-it/actions@generate-npmrc
+      with:
+        npm_token: ${{ inputs.packages_token }}
+        font_awesome_key: ${{ inputs.fontawesome_token }}
+      if: ${{ inputs.packages_token != '' }}
 
+    - name: 'Cache Node Modules Dependencies'
+      uses: actions/cache@v4
+      id: cache-node-modules
+      with:
+        path: 'node_modules'
+        # key depends on package manager
+        key: deps-node-modules-${{ hashFiles(format('**/{0}', steps.package_manager.outputs.lock_file)) }}        
+        restore-keys: |
+          deps-node-modules-${{ hashFiles(format('**/{0}', steps.package_manager.outputs.lock_file)) }}
+      if: inputs.cache == 'true'
+    
+    - name: Install dependencies
+      run: ${{ steps.package_manager.outputs.command }}
+      shell: bash
+      if: inputs.cache == 'false' || steps.cache-node-modules.outputs.cache-hit != 'true'
+
+    - name: "Extract info from Package Json"
+      uses: actions/github-script@v7
+      id: package
+      with:
+        script: |
+          const fs = require('fs')
+          try {
+            const needReport = core.getInput('need_report') === 'true';
+            const jsonString = fs.readFileSync('./package.json', 'utf8');
+            const json = JSON.parse(jsonString);
+            const eslint = json.scripts?.eslint || '';
+            const stylelint = json.scripts?.stylelint || '';
+            const lint = json.scripts?.lint || '';
+            const test = json.scripts?.test || '';
+            const extraSlash = '${{ steps.package_manager.outputs.name }}' === 'pnpm' ? '' : '--';
+
+            const extraArgsEslint = needReport ? ' --format=json --output-file=eslint-report.json' : '';
+            const extraArgsStylelint = needReport ? ' --formatter json --output-file stylelint-report.json' : '';
+
+            return { lint, test, extraSlash, eslint, stylelint, extraArgsEslint, extraArgsStylelint };
+          } catch(err) {
+            core.error("Error while reading or parsing the 'package.json' file")
+            core.setFailed(err.message)
+          }
+    - name: Eslint
+      run: ${{ steps.package_manager.outputs.name }} run eslint${{ fromJson(steps.package.outputs.result).extraArgsEslint }}
+      if: ${{ inputs.skip_lint != 'true' && fromJson(steps.package.outputs.result).eslint != '' }}
+      shell: bash
+    - name: Stylelint
+      run: ${{ steps.package_manager.outputs.name }} run stylelint${{ fromJson(steps.package.outputs.result).extraArgsStylelint }}
+      if: ${{ inputs.skip_lint != 'true' && fromJson(steps.package.outputs.result).stylelint != '' }}
+      shell: bash
+    - name: Build
+      run: ${{ steps.package_manager.outputs.name }} run build
+      shell: bash
+      env:
+        CI: ${{ inputs.ci == 'true' }}
+    - name: Get tests flags
+      run: |
+        if [ -f package.json ]; then
+          if grep -q vitest package.json; then
+            echo "tests_flags=" >> $GITHUB_OUTPUT
+          else
+            echo "tests_flags=--runInBand --silent" >> $GITHUB_OUTPUT
+          fi
+        fi
+      id: flags
+      shell: bash
+    - name: Unit tests
+      run: ${{ steps.package_manager.outputs.name }} run test ${{ fromJson(steps.package.outputs.result).extraSlash }} --coverage ${{ steps.flags.outputs.tests_flags }}
+      shell: bash
+      env:
+        CI: ${{ inputs.ci == 'true' }}
+      if: ${{ inputs.skip_test != 'true' }}
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-coverage-report
+        path: coverage
+        overwrite: true
+      if: ${{ inputs.skip_test != 'true' }}
+
+    - name: Archive linter reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: linter-reports
+        path: |
+          eslint-report.json
+          stylelint-report.json
+        overwrite: true
+      if: ${{ inputs.need_report == 'true' }}
