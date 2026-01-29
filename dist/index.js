@@ -35978,8 +35978,9 @@ async function createOrUpdateComment(octokit, context, body, actor = 'Cybersecur
  * @returns Resolves when the action is complete.
  */
 async function run() {
+    let copilot;
     try {
-        const reportPath = coreExports.getInput('report-path', { required: false }) || './report.json';
+        const reportPath = coreExports.getInput('report-path', { required: false }) || './report';
         const token = coreExports.getInput('github_token', { required: true });
         const model = coreExports.getInput('model', { required: false }) || 'gpt-4o';
         const octokit = githubExports.getOctokit(token);
@@ -35992,7 +35993,7 @@ async function run() {
             return;
         }
         const pullRequest = githubExports.context.payload.pull_request;
-        const copilot = new CopilotClient();
+        copilot = new CopilotClient();
         const session = await copilot.createSession({
             model: model,
             systemMessage: {
@@ -36007,7 +36008,7 @@ async function run() {
             prompt: `Analyze the linter report located and provide actionable, language-agnostic recommendations to improve the code quality. Focus on readability, maintainability, simplicity, testability, consistency, and documentation. Avoid mentioning security issues. Focus on the changes made in this pull request: ${pullRequest?.html_url}`,
             attachments: [
                 {
-                    type: 'file',
+                    type: 'directory',
                     path: reportPath
                 }
             ]
@@ -36020,6 +36021,18 @@ async function run() {
         // Fail the workflow run if an error occurs
         if (error instanceof Error)
             coreExports.setFailed(error.message);
+    }
+    finally {
+        // Ensure Copilot resources are cleaned up to avoid stream write errors
+        try {
+            // Stop the client which destroys active sessions and closes connections
+            if (copilot) {
+                await copilot.stop();
+            }
+        }
+        catch {
+            // Swallow cleanup errors to avoid masking the primary result
+        }
     }
 }
 function isPass(message = '') {

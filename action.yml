@@ -12,7 +12,7 @@ inputs:
   report-path:
     description: 'Path to the report file'
     required: false
-    default: './report.json'
+    default: './report'
   github_token:
     description: 'GitHub token for authentication'
     required: true

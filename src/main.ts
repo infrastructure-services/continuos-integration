@@ -10,9 +10,10 @@ import { createOrUpdateComment } from './comment.js'
  * @returns Resolves when the action is complete.
  */
 export async function run(): Promise<void> {
+  let copilot: CopilotClient | undefined
   try {
     const reportPath: string =
-      core.getInput('report-path', { required: false }) || './report.json'
+      core.getInput('report-path', { required: false }) || './report'
     const token = core.getInput('github_token', { required: true })
     const model = core.getInput('model', { required: false }) || 'gpt-4o'
 
@@ -32,7 +33,7 @@ export async function run(): Promise<void> {
     }
     const pullRequest = github.context.payload.pull_request
 
-    const copilot = new CopilotClient()
+    copilot = new CopilotClient()
 
     const session = await copilot.createSession({
       model: model,
@@ -49,7 +50,7 @@ export async function run(): Promise<void> {
       prompt: `Analyze the linter report located and provide actionable, language-agnostic recommendations to improve the code quality. Focus on readability, maintainability, simplicity, testability, consistency, and documentation. Avoid mentioning security issues. Focus on the changes made in this pull request: ${pullRequest?.html_url}`,
       attachments: [
         {
-          type: 'file',
+          type: 'directory',
           path: reportPath
         }
       ]
@@ -73,6 +74,16 @@ export async function run(): Promise<void> {
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) core.setFailed(error.message)
+  } finally {
+    // Ensure Copilot resources are cleaned up to avoid stream write errors
+    try {
+      // Stop the client which destroys active sessions and closes connections
+      if (copilot) {
+        await copilot.stop()
+      }
+    } catch {
+      // Swallow cleanup errors to avoid masking the primary result
+    }
   }
 }
 
