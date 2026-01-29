@@ -16,6 +16,10 @@ inputs:
   github_token:
     description: 'GitHub token for authentication'
     required: true
+  model:
+    description: 'AI model to use for code review'
+    required: false
+    default: 'gpt-4o'
 
 runs:
   using: node24

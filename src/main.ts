@@ -14,6 +14,7 @@ export async function run(): Promise<void> {
     const reportPath: string =
       core.getInput('report-path', { required: false }) || './report.json'
     const token = core.getInput('github_token', { required: true })
+    const model = core.getInput('model', { required: false }) || 'gpt-4o'
 
     const octokit = github.getOctokit(token)
 
@@ -34,7 +35,7 @@ export async function run(): Promise<void> {
     const copilot = new CopilotClient()
 
     const session = await copilot.createSession({
-      model: 'gpt-4o',
+      model: model,
       systemMessage: {
         mode: 'append',
         content: SYSTEM_PROMPT_QUALITY
