@@ -38,7 +38,6 @@
   "dependencies": {
     "@actions/core": "^1.11.1",
     "@github/copilot-sdk": "^0.1.19",
-    "@octokit/plugin-rest-endpoint-methods": "^17.0.0",
     "cross-env": "^10.1.0",
     "tsx": "^4.21.0"
   },

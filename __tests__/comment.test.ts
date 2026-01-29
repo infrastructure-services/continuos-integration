@@ -21,15 +21,19 @@ const makeOctokit = (): OctokitMock => ({
   }
 })
 
-const makeContext = () =>
-  ({
-    issue: { number: 123 },
-    repo: { owner: 'owner', repo: 'repo' }
-  } as any)
+type ContextMock = {
+  issue: { number: number }
+  repo: { owner: string; repo: string }
+}
+
+const makeContext = (): ContextMock => ({
+  issue: { number: 123 },
+  repo: { owner: 'owner', repo: 'repo' }
+})
 
 describe('createOrUpdateComment', () => {
   let octokit: OctokitMock
-  let context: any
+  let context: ContextMock
 
   beforeEach(() => {
     octokit = makeOctokit()
@@ -43,9 +47,15 @@ describe('createOrUpdateComment', () => {
       user: { login: 'CybersecurityGLA' },
       body: 'Previous results <!-- code-quality-validator --> details'
     }
-    octokit.rest.issues.listComments.mockResolvedValue({ data: [existingComment] })
+    octokit.rest.issues.listComments.mockResolvedValue({
+      data: [existingComment]
+    })
 
-    await createOrUpdateComment(octokit as any, context, 'new body')
+    await createOrUpdateComment(
+      octokit as unknown as Parameters<typeof createOrUpdateComment>[0],
+      context as unknown as Parameters<typeof createOrUpdateComment>[1],
+      'new body'
+    )
 
     expect(octokit.rest.issues.listComments).toHaveBeenCalledWith({
       issue_number: 123,
@@ -66,7 +76,11 @@ describe('createOrUpdateComment', () => {
   it('creates a new comment when no matching comment exists', async () => {
     octokit.rest.issues.listComments.mockResolvedValue({ data: [] })
 
-    await createOrUpdateComment(octokit as any, context, 'new body')
+    await createOrUpdateComment(
+      octokit as unknown as Parameters<typeof createOrUpdateComment>[0],
+      context as unknown as Parameters<typeof createOrUpdateComment>[1],
+      'new body'
+    )
 
     expect(octokit.rest.issues.createComment).toHaveBeenCalledTimes(1)
     expect(octokit.rest.issues.createComment).toHaveBeenCalledWith({
@@ -91,11 +105,13 @@ describe('createOrUpdateComment', () => {
       user: { login: 'someone-else' },
       body: 'no marker'
     }
-    octokit.rest.issues.listComments.mockResolvedValue({ data: [nonMatching, matching] })
+    octokit.rest.issues.listComments.mockResolvedValue({
+      data: [nonMatching, matching]
+    })
 
     await createOrUpdateComment(
-      octokit as any,
-      context,
+      octokit as unknown as Parameters<typeof createOrUpdateComment>[0],
+      context as unknown as Parameters<typeof createOrUpdateComment>[1],
       'custom body',
       customActor,
       customMarker
@@ -117,9 +133,15 @@ describe('createOrUpdateComment', () => {
       user: { login: 'CybersecurityGLA' },
       body: 'No marker present here'
     }
-    octokit.rest.issues.listComments.mockResolvedValue({ data: [sameActorNoMarker] })
+    octokit.rest.issues.listComments.mockResolvedValue({
+      data: [sameActorNoMarker]
+    })
 
-    await createOrUpdateComment(octokit as any, context, 'body-123')
+    await createOrUpdateComment(
+      octokit as unknown as Parameters<typeof createOrUpdateComment>[0],
+      context as unknown as Parameters<typeof createOrUpdateComment>[1],
+      'body-123'
+    )
 
     expect(octokit.rest.issues.updateComment).not.toHaveBeenCalled()
     expect(octokit.rest.issues.createComment).toHaveBeenCalledTimes(1)

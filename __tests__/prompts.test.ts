@@ -1,5 +1,8 @@
 import { describe, it, expect } from '@jest/globals'
-import { AgentQualityCodeWithDiffs, SYSTEM_PROMPT_QUALITY } from '../src/prompts.js'
+import {
+  AgentQualityCodeWithDiffs,
+  SYSTEM_PROMPT_QUALITY
+} from '../src/prompts.js'
 
 describe('prompts.ts', () => {
   it('exports non-empty SYSTEM_PROMPT_QUALITY with Quality Gate section', () => {
@@ -11,7 +14,9 @@ describe('prompts.ts', () => {
 
   it('exports AgentQualityCodeWithDiffs with correct header metadata', () => {
     expect(typeof AgentQualityCodeWithDiffs).toBe('string')
-    expect(AgentQualityCodeWithDiffs).toContain('name: AgentQualityCodeWithDiffs')
+    expect(AgentQualityCodeWithDiffs).toContain(
+      'name: AgentQualityCodeWithDiffs'
+    )
     expect(AgentQualityCodeWithDiffs).toContain('model: GPT-4o')
     expect(AgentQualityCodeWithDiffs).toContain('## Purpose')
   })

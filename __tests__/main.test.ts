@@ -5,7 +5,14 @@ import * as core from '../__fixtures__/core.js'
 jest.unstable_mockModule('@actions/core', () => core)
 
 // Prepare mutable context for @actions/github mock
-const mockContext: any = {
+type MockContext = {
+  eventName: string
+  repo: { owner: string; repo: string }
+  sha: string
+  payload: Record<string, unknown>
+}
+
+const mockContext: MockContext = {
   eventName: 'push',
   repo: { owner: 'owner', repo: 'repo' },
   sha: 'abc123',
@@ -27,7 +34,9 @@ jest.unstable_mockModule('@actions/github', () => ({
 
 // Mock createOrUpdateComment helper
 const createOrUpdateComment = jest.fn().mockResolvedValue(undefined)
-jest.unstable_mockModule('../src/comment.js', () => ({ createOrUpdateComment }))
+jest.unstable_mockModule('../src/comment.js', () => ({
+  createOrUpdateComment
+}))
 
 // Mock Copilot SDK with a class to mirror constructor usage
 const sendAndWait = jest.fn()
@@ -35,7 +44,9 @@ const createSession = jest.fn(async () => ({ sendAndWait }))
 class CopilotClientMock {
   createSession = createSession
 }
-jest.unstable_mockModule('@github/copilot-sdk', () => ({ CopilotClient: CopilotClientMock }))
+jest.unstable_mockModule('@github/copilot-sdk', () => ({
+  CopilotClient: CopilotClientMock
+}))
 
 const { run } = await import('../src/main.js')
 
@@ -43,7 +54,7 @@ describe('main.ts', () => {
   beforeEach(() => {
     jest.resetAllMocks()
     // reset mocks recreated above
-    ;(core.getInput as any).mockImplementation((name: string) => {
+    core.getInput.mockImplementation((name: string) => {
       if (name === 'github_token') return 'ghs_123'
       if (name === 'report-path') return ''
       return ''
@@ -51,7 +62,7 @@ describe('main.ts', () => {
     // restore getOctokit implementation after reset
     getOctokit.mockImplementation(() => ({
       rest: { repos: { createCommitStatus } }
-    }) as any)
+    }))
     mockContext.eventName = 'push'
     mockContext.payload = {}
   })
@@ -67,7 +78,7 @@ describe('main.ts', () => {
   it('posts success status when Copilot returns PASS', async () => {
     mockContext.eventName = 'pull_request'
     mockContext.payload = { pull_request: { html_url: 'https://example/pr/1' } }
-    createSession.mockImplementation(async (opts: any) => {
+    createSession.mockImplementation(async (opts: unknown) => {
       if (opts?.onPermissionRequest) {
         await opts.onPermissionRequest()
       }
@@ -75,7 +86,7 @@ describe('main.ts', () => {
         sendAndWait: jest
           .fn()
           .mockResolvedValue({ data: { content: '**Result:** PASS' } })
-      } as any
+      }
     })
 
     await run()
@@ -96,8 +107,10 @@ describe('main.ts', () => {
     mockContext.eventName = 'pull_request'
     mockContext.payload = { pull_request: { html_url: 'https://example/pr/2' } }
     createSession.mockResolvedValue({
-      sendAndWait: jest.fn().mockResolvedValue({ data: { content: '**Result:** FAIL' } })
-    } as any)
+      sendAndWait: jest
+        .fn()
+        .mockResolvedValue({ data: { content: '**Result:** FAIL' } })
+    })
 
     await run()
 
@@ -121,15 +134,17 @@ describe('main.ts', () => {
     mockContext.eventName = 'pull_request'
     mockContext.payload = { pull_request: {} }
     // override getInput for this test
-    ;(core.getInput as any).mockImplementation((name: string) => {
+    core.getInput.mockImplementation((name: string) => {
       if (name === 'github_token') return 'ghs_123'
       if (name === 'report-path') return 'custom.json'
       return ''
     })
 
     createSession.mockResolvedValue({
-      sendAndWait: jest.fn().mockResolvedValue({ data: { content: 'All good' } })
-    } as any)
+      sendAndWait: jest
+        .fn()
+        .mockResolvedValue({ data: { content: 'All good' } })
+    })
 
     await run()
 
@@ -153,7 +168,7 @@ describe('main.ts', () => {
     mockContext.payload = { pull_request: {} }
     createSession.mockResolvedValue({
       sendAndWait: jest.fn().mockResolvedValue(undefined)
-    } as any)
+    })
 
     await run()
 

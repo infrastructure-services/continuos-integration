@@ -1,8 +1,8 @@
-import * as core from '@actions/core'
 import * as github from '@actions/github'
+import * as core from '@actions/core'
 import { CopilotClient } from '@github/copilot-sdk'
-import { createOrUpdateComment } from './comment.js'
 import { SYSTEM_PROMPT_QUALITY } from './prompts.js'
+import { createOrUpdateComment } from './comment.js'
 
 /**
  * The main function for the action.
