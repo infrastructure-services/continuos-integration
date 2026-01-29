@@ -1,62 +1,164 @@
-/**
- * Unit tests for the action's main functionality, src/main.ts
- *
- * To mock dependencies in ESM, you can create fixtures that export mock
- * functions and objects. For example, the core module is mocked in this test,
- * so that the actual '@actions/core' module is not imported.
- */
 import { jest } from '@jest/globals'
 import * as core from '../__fixtures__/core.js'
-import { wait } from '../__fixtures__/wait.js'
 
-// Mocks should be declared before the module being tested is imported.
+// Mock @actions/core first
 jest.unstable_mockModule('@actions/core', () => core)
-jest.unstable_mockModule('../src/wait.js', () => ({ wait }))
 
-// The module being tested should be imported dynamically. This ensures that the
-// mocks are used in place of any actual dependencies.
+// Prepare mutable context for @actions/github mock
+const mockContext: any = {
+  eventName: 'push',
+  repo: { owner: 'owner', repo: 'repo' },
+  sha: 'abc123',
+  payload: {}
+}
+
+const createCommitStatus = jest.fn()
+const getOctokit = jest.fn(() => ({
+  rest: {
+    repos: { createCommitStatus }
+  }
+}))
+
+jest.unstable_mockModule('@actions/github', () => ({
+  default: {},
+  context: mockContext,
+  getOctokit
+}))
+
+// Mock createOrUpdateComment helper
+const createOrUpdateComment = jest.fn().mockResolvedValue(undefined)
+jest.unstable_mockModule('../src/comment.js', () => ({ createOrUpdateComment }))
+
+// Mock Copilot SDK with a class to mirror constructor usage
+const sendAndWait = jest.fn()
+const createSession = jest.fn(async () => ({ sendAndWait }))
+class CopilotClientMock {
+  createSession = createSession
+}
+jest.unstable_mockModule('@github/copilot-sdk', () => ({ CopilotClient: CopilotClientMock }))
+
 const { run } = await import('../src/main.js')
 
 describe('main.ts', () => {
   beforeEach(() => {
-    // Set the action's inputs as return values from core.getInput().
-    core.getInput.mockImplementation(() => '500')
-
-    // Mock the wait function so that it does not actually wait.
-    wait.mockImplementation(() => Promise.resolve('done!'))
-  })
-
-  afterEach(() => {
     jest.resetAllMocks()
+    // reset mocks recreated above
+    ;(core.getInput as any).mockImplementation((name: string) => {
+      if (name === 'github_token') return 'ghs_123'
+      if (name === 'report-path') return ''
+      return ''
+    })
+    // restore getOctokit implementation after reset
+    getOctokit.mockImplementation(() => ({
+      rest: { repos: { createCommitStatus } }
+    }) as any)
+    mockContext.eventName = 'push'
+    mockContext.payload = {}
   })
 
-  it('Sets the time output', async () => {
+  it('warns and exits when not a pull_request event', async () => {
+    await run()
+    expect(core.warning).toHaveBeenCalledWith(
+      'Esta acción solo se puede ejecutar en eventos de pull request.'
+    )
+    expect(getOctokit).toHaveBeenCalled()
+  })
+
+  it('posts success status when Copilot returns PASS', async () => {
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: { html_url: 'https://example/pr/1' } }
+    createSession.mockImplementation(async (opts: any) => {
+      if (opts?.onPermissionRequest) {
+        await opts.onPermissionRequest()
+      }
+      return {
+        sendAndWait: jest
+          .fn()
+          .mockResolvedValue({ data: { content: '**Result:** PASS' } })
+      } as any
+    })
+
     await run()
 
-    // Verify the time output was set.
-    expect(core.setOutput).toHaveBeenNthCalledWith(
-      1,
-      'time',
-      // Simple regex to match a time string in the format HH:MM:SS.
-      expect.stringMatching(/^\d{2}:\d{2}:\d{2}/)
+    expect(createSession).toHaveBeenCalled()
+    expect(createOrUpdateComment).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.stringContaining('**Result:** PASS')
+    )
+    expect(createCommitStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'success' })
+    )
+    expect(core.setFailed).not.toHaveBeenCalled()
+  })
+
+  it('posts failure status when Copilot returns FAIL', async () => {
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: { html_url: 'https://example/pr/2' } }
+    createSession.mockResolvedValue({
+      sendAndWait: jest.fn().mockResolvedValue({ data: { content: '**Result:** FAIL' } })
+    } as any)
+
+    await run()
+
+    expect(createCommitStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'failure' })
+    )
+    expect(core.setFailed).not.toHaveBeenCalled()
+  })
+
+  it('sets failed status when an error occurs', async () => {
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: { html_url: 'https://example/pr/3' } }
+    createSession.mockRejectedValueOnce(new Error('session failed'))
+
+    await run()
+
+    expect(core.setFailed).toHaveBeenCalledWith('session failed')
+  })
+
+  it('uses custom report path when provided', async () => {
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: {} }
+    // override getInput for this test
+    ;(core.getInput as any).mockImplementation((name: string) => {
+      if (name === 'github_token') return 'ghs_123'
+      if (name === 'report-path') return 'custom.json'
+      return ''
+    })
+
+    createSession.mockResolvedValue({
+      sendAndWait: jest.fn().mockResolvedValue({ data: { content: 'All good' } })
+    } as any)
+
+    await run()
+
+    expect(createCommitStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'success' })
     )
   })
 
-  it('Sets a failed status', async () => {
-    // Clear the getInput mock and return an invalid value.
-    core.getInput.mockClear().mockReturnValueOnce('this is not a number')
-
-    // Clear the wait mock and return a rejected promise.
-    wait
-      .mockClear()
-      .mockRejectedValueOnce(new Error('milliseconds is not a number'))
+  it('swallows non-Error exceptions without marking failed', async () => {
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: {} }
+    createSession.mockRejectedValueOnce('not-an-error')
 
     await run()
 
-    // Verify that the action was marked as failed.
-    expect(core.setFailed).toHaveBeenNthCalledWith(
-      1,
-      'milliseconds is not a number'
+    expect(core.setFailed).not.toHaveBeenCalled()
+  })
+
+  it('treats undefined response as pass via default isPass argument', async () => {
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: {} }
+    createSession.mockResolvedValue({
+      sendAndWait: jest.fn().mockResolvedValue(undefined)
+    } as any)
+
+    await run()
+
+    expect(createCommitStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'success' })
     )
   })
 })
