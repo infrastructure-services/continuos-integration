@@ -1,0 +1,117 @@
+name: 'SonarQube Analyzer .NET'
+description: 'Se realiza el análisis en sonarqube para NET'
+inputs:
+  github_username:
+    description: 'usuario de github para autenticarse en los packages'
+    required: true
+  github_token:
+    description: 'token del usuario con permisos de lectura en packages'
+    required: true
+  workdir_src:
+    description:
+      'directorio donde se encuentra el project a compilar DEFAULT: ./'
+    required: false
+    default: './'
+  workdir_test:
+    description: 'directorio donde se encuentra los test DEFAULT: ./'
+    required: false
+    default: './'
+  sonar_url:
+    description: 'url sonarqube'
+    required: true
+  sonar_token:
+    description: 'token sonarqube'
+    required: true
+  sonar_key:
+    description: 'Key del repositorio'
+    required: true
+  sonar_custom:
+    description: 'config sonar custom'
+    default: ''
+  dotnet-version:
+    description: 'versiones de dotnet'
+    required: false
+    default: '8.0.x'
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
+    - name: Key Repository
+      id: variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const name = context.repo.repo
+          const organization = context.repo.owner
+          core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
+
+    - name: Setup dotnet
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+
+    - name: Sonarqube Begin
+      run: |
+        dotnet nuget locals -c all
+        dotnet nuget add source https://nuget.pkg.github.com/architecture-it/index.json --name architecture-it -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+        dotnet nuget add source https://nuget.pkg.github.com/operations-innovation/index.json --name operations-innovation -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+        dotnet nuget add source https://nuget.pkg.github.com/customer-experience/index.json --name customer-experience -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+        dotnet nuget add source https://nuget.pkg.github.com/warehouse-andreani/index.json --name warehouse-andreani -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+        dotnet nuget add source https://nuget.pkg.github.com/witwot-jms/index.json --name witwot-jms -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+        dotnet nuget add source https://nuget.pkg.github.com/corporate-solutions-gla/index.json --name corporate-solutions-gla -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
+        dotnet tool install --global dotnet-sonarscanner
+        dotnet sonarscanner begin /key:"${{ env.KEY_REPOSITORY }}" -d:sonar.login="${{ inputs.sonar_token }}" -d:sonar.host.url="${{ inputs.sonar_url }}" -d:sonar.cs.vstest.reportsPaths=**/*.trx -d:sonar.cs.opencover.reportsPaths=**/coverage.opencover.xml ${{ inputs.sonar_custom}}
+      shell: bash
+
+    - name: Restore
+      run: dotnet restore
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+
+    - name: Add editorconfig
+      run: |
+        echo root = true >> .editorconfig
+        echo [*] >> .editorconfig
+        echo dotnet_diagnostic.CA1873.severity = none >> .editorconfig
+        echo dotnet_diagnostic.CA1707.severity = none >> .editorconfig
+        echo dotnet_diagnostic.CS1591.severity = none >> .editorconfig
+        echo dotnet_diagnostic.ORLEANS0010.severity = none >> .editorconfig
+
+    - name: Run linter
+      run:
+        dotnet format --report report-new.json --verbosity quiet
+        --verify-no-changes
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+
+    - name: Upload linter report
+      uses: actions/upload-artifact@v6
+      with:
+        name: dotnet-linter-report
+        path: report-new.json
+
+    - name: Build
+      run: dotnet build
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+
+    - name: Test
+      env:
+        ASPNETCORE_ENVIRONMENT: Development
+      shell: bash
+      run:
+        dotnet test --collect:"XPlat Code Coverage" --
+        DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+        --results-directory TestResults/ --logger
+        "trx;LogFileName=unittests.trx" --no-build --no-restore --configuration
+        release
+      working-directory: ${{ inputs.workdir_test }}
+
+    - name: Sonarqube end
+      working-directory: ${{ inputs.workdir_src }}
+      run: dotnet sonarscanner end -d:sonar.login="${{ inputs.sonar_token }}"
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
