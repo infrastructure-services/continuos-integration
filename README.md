@@ -50,7 +50,7 @@ jobs:
 				uses: actions/checkout@v4
 
 			- name: React CI
-				uses: infrastructure-services/continuos-integration@v3-beta
+				uses: infrastructure-services/continuos-integration@react-beta
 				with:
 					matrix_version: ${{ matrix.node }}
 					packages_token: ${{ secrets.GITHUB_PACKAGES_TOKEN }}
