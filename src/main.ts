@@ -17,6 +17,8 @@ export async function run(): Promise<void> {
 
     const octokit = github.getOctokit(token)
 
+    // get pull request context
+
     // use github copilot to analyze and suggest for the report
     core.info(`Report path: ${reportPath}`)
 
@@ -27,6 +29,7 @@ export async function run(): Promise<void> {
       )
       return
     }
+    const pullRequest = github.context.payload.pull_request
 
     const copilot = new CopilotClient()
 
@@ -42,7 +45,7 @@ export async function run(): Promise<void> {
     })
 
     const response = await session.sendAndWait({
-      prompt: `Analyze the linter report located and provide actionable, language-agnostic recommendations to improve the code quality. Focus on readability, maintainability, simplicity, testability, consistency, and documentation. Avoid mentioning security issues.`,
+      prompt: `Analyze the linter report located and provide actionable, language-agnostic recommendations to improve the code quality. Focus on readability, maintainability, simplicity, testability, consistency, and documentation. Avoid mentioning security issues. Focus on the changes made in this pull request: ${pullRequest?.html_url}`,
       attachments: [
         {
           type: 'file',
@@ -57,14 +60,6 @@ export async function run(): Promise<void> {
       octokit,
       github.context,
       `${response?.data.content.trim()}`
-    )
-
-    await setStatus(
-      octokit,
-      github.context.repo,
-      github.context.sha,
-      'success',
-      'Code quality analysis completed successfully'
     )
 
     await setStatus(
