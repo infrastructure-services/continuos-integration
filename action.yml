@@ -31,7 +31,7 @@ inputs:
   pnpm_version:
     description: "version default pnpm"
     required: false
-    default: '9'
+    default: '10'
   need_report:
     description: "Indica si se necesita un reporte detallado de lint y test"
     required: false
