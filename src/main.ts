@@ -23,6 +23,7 @@ export async function run(): Promise<void> {
     const octokit = github.getOctokit(token)
 
     // get pull request context
+    // assign github copilot to pull request
 
     // use github copilot to analyze and suggest for the report
     core.info(`Report path: ${reportPath}`)
@@ -44,9 +45,6 @@ export async function run(): Promise<void> {
       systemMessage: {
         mode: 'append',
         content: SYSTEM_PROMPT_QUALITY
-      },
-      onPermissionRequest: async () => {
-        return { kind: 'approved' }
       }
     })
 
@@ -101,7 +99,7 @@ async function setStatus(
   sha: string,
   state: 'success' | 'failure' | 'pending',
   description: string,
-  context = 'Jira Issue Validation'
+  context = 'Agent Code Quality Check'
 ): Promise<void> {
   await octokit.rest.repos.createCommitStatus({
     owner: repo.owner,

@@ -31243,6 +31243,8 @@ function requireCore () {
 
 var coreExports = requireCore();
 
+var execExports = requireExec();
+
 var main = {};
 
 var ril = {};
@@ -35983,6 +35985,8 @@ async function run() {
         const reportPath = coreExports.getInput('report-path', { required: false }) || './report';
         const token = coreExports.getInput('github_token', { required: true });
         const model = coreExports.getInput('model', { required: false }) || 'gpt-4o';
+        // install github copilot sdk cli
+        await execExports.exec('npm', ['install', '-g', '@github/copilot-sdk-cli']);
         const octokit = githubExports.getOctokit(token);
         // get pull request context
         // use github copilot to analyze and suggest for the report
