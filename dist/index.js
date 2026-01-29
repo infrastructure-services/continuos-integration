@@ -35993,12 +35993,8 @@ async function run() {
             return;
         }
         const pullRequest = githubExports.context.payload.pull_request;
-        // Use TCP instead of stdio to avoid stdin write errors on Node 24
-        copilot = new CopilotClient({
-            useStdio: false,
-            autoRestart: false,
-            logLevel: 'warning'
-        });
+        // Default stdio mode; graceful shutdown prevents stream errors
+        copilot = new CopilotClient();
         const session = await copilot.createSession({
             model: model,
             systemMessage: {

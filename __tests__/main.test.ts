@@ -41,11 +41,19 @@ jest.unstable_mockModule('../src/comment.js', () => ({
 // Mock Copilot SDK with a class to mirror constructor usage
 const sendAndWait = jest.fn()
 const createSession = jest.fn(async () => ({ sendAndWait }))
+const stopMock = jest.fn().mockResolvedValue([])
 class CopilotClientMock {
   createSession = createSession
+  stop = stopMock
 }
 jest.unstable_mockModule('@github/copilot-sdk', () => ({
   CopilotClient: CopilotClientMock
+}))
+
+// Mock @actions/exec to prevent real global installs during tests
+const execMock = jest.fn().mockResolvedValue(0)
+jest.unstable_mockModule('@actions/exec', () => ({
+  exec: execMock
 }))
 
 const { run } = await import('../src/main.js')
@@ -65,6 +73,9 @@ describe('main.ts', () => {
     }))
     mockContext.eventName = 'push'
     mockContext.payload = {}
+    // clear per-test Copilot stop calls
+    stopMock.mockClear()
+    execMock.mockClear()
   })
 
   it('warns and exits when not a pull_request event', async () => {
@@ -101,6 +112,8 @@ describe('main.ts', () => {
       expect.objectContaining({ state: 'success' })
     )
     expect(core.setFailed).not.toHaveBeenCalled()
+    // Copilot is stopped in finally
+    expect(stopMock).toHaveBeenCalled()
   })
 
   it('posts failure status when Copilot returns FAIL', async () => {
@@ -128,6 +141,8 @@ describe('main.ts', () => {
     await run()
 
     expect(core.setFailed).toHaveBeenCalledWith('session failed')
+    // Copilot is stopped even on error
+    expect(stopMock).toHaveBeenCalled()
   })
 
   it('uses custom report path when provided', async () => {
@@ -140,10 +155,9 @@ describe('main.ts', () => {
       return ''
     })
 
+    sendAndWait.mockResolvedValue({ data: { content: 'All good' } })
     createSession.mockResolvedValue({
-      sendAndWait: jest
-        .fn()
-        .mockResolvedValue({ data: { content: 'All good' } })
+      sendAndWait
     })
 
     await run()
@@ -151,6 +165,13 @@ describe('main.ts', () => {
     expect(createCommitStatus).toHaveBeenCalledWith(
       expect.objectContaining({ state: 'success' })
     )
+    // Ensure attachment type is directory with provided path
+    expect(sendAndWait).toHaveBeenCalled()
+    const args = sendAndWait.mock.calls[0][0]
+    expect(args.attachments?.[0]).toEqual(
+      expect.objectContaining({ type: 'directory', path: 'custom.json' })
+    )
+    expect(stopMock).toHaveBeenCalled()
   })
 
   it('swallows non-Error exceptions without marking failed', async () => {
@@ -161,6 +182,7 @@ describe('main.ts', () => {
     await run()
 
     expect(core.setFailed).not.toHaveBeenCalled()
+    expect(stopMock).toHaveBeenCalled()
   })
 
   it('treats undefined response as pass via default isPass argument', async () => {
@@ -175,5 +197,15 @@ describe('main.ts', () => {
     expect(createCommitStatus).toHaveBeenCalledWith(
       expect.objectContaining({ state: 'success' })
     )
+    expect(stopMock).toHaveBeenCalled()
+  })
+
+  it('does not create or stop Copilot on non-PR events', async () => {
+    mockContext.eventName = 'push'
+    await run()
+    expect(core.warning).toHaveBeenCalledWith(
+      'Esta acción solo se puede ejecutar en eventos de pull request.'
+    )
+    expect(stopMock).not.toHaveBeenCalled()
   })
 })

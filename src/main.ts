@@ -1,5 +1,6 @@
 import * as github from '@actions/github'
 import * as core from '@actions/core'
+import * as exec from '@actions/exec'
 import { CopilotClient } from '@github/copilot-sdk'
 import { SYSTEM_PROMPT_QUALITY } from './prompts.js'
 import { createOrUpdateComment } from './comment.js'
@@ -17,6 +18,8 @@ export async function run(): Promise<void> {
     const token = core.getInput('github_token', { required: true })
     const model = core.getInput('model', { required: false }) || 'gpt-4o'
 
+    // install github copilot sdk cli
+    await exec.exec('npm', ['install', '-g', '@github/copilot-sdk-cli'])
     const octokit = github.getOctokit(token)
 
     // get pull request context
@@ -33,12 +36,8 @@ export async function run(): Promise<void> {
     }
     const pullRequest = github.context.payload.pull_request
 
-    // Use TCP instead of stdio to avoid stdin write errors on Node 24
-    copilot = new CopilotClient({
-      useStdio: false,
-      autoRestart: false,
-      logLevel: 'warning'
-    })
+    // Default stdio mode; graceful shutdown prevents stream errors
+    copilot = new CopilotClient()
 
     const session = await copilot.createSession({
       model: model,
