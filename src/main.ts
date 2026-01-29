@@ -33,7 +33,12 @@ export async function run(): Promise<void> {
     }
     const pullRequest = github.context.payload.pull_request
 
-    copilot = new CopilotClient()
+    // Use TCP instead of stdio to avoid stdin write errors on Node 24
+    copilot = new CopilotClient({
+      useStdio: false,
+      autoRestart: false,
+      logLevel: 'warning'
+    })
 
     const session = await copilot.createSession({
       model: model,
