@@ -1,11 +1,12 @@
 import * as github from '@actions/github'
+import { PR_COMMENT_IDENTIFIER } from './constants.js'
 
 export async function createOrUpdateComment(
   octokit: ReturnType<typeof github.getOctokit>,
   context: typeof github.context,
   body: string,
   actor = 'CybersecurityGLA',
-  commentBody: string = '<!-- code-quality-validator -->'
+  commentBody: string = PR_COMMENT_IDENTIFIER
 ) {
   const { data: comments } = await octokit.rest.issues.listComments({
     issue_number: context.issue.number,

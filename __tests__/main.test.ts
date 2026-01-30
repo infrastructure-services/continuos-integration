@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals'
+import * as path from 'path'
 import * as core from '../__fixtures__/core.js'
 
 // Mock @actions/core first
@@ -38,44 +39,21 @@ jest.unstable_mockModule('../src/comment.js', () => ({
   createOrUpdateComment
 }))
 
-// Mock Copilot SDK with a class to mirror constructor usage
-const sendAndWait = jest.fn()
-const createSession = jest.fn(async () => ({ sendAndWait }))
-const stopMock = jest.fn().mockResolvedValue([])
-class CopilotClientMock {
-  createSession = createSession
-  stop = stopMock
-}
-jest.unstable_mockModule('@github/copilot-sdk', () => ({
-  CopilotClient: CopilotClientMock
-}))
-
-// Mock @actions/exec to prevent real global installs during tests
-const execMock = jest.fn().mockResolvedValue(0)
-jest.unstable_mockModule('@actions/exec', () => ({
-  exec: execMock
-}))
-
 const { run } = await import('../src/main.js')
 
 describe('main.ts', () => {
   beforeEach(() => {
     jest.resetAllMocks()
-    // reset mocks recreated above
     core.getInput.mockImplementation((name: string) => {
       if (name === 'github_token') return 'ghs_123'
       if (name === 'report-path') return ''
       return ''
     })
-    // restore getOctokit implementation after reset
     getOctokit.mockImplementation(() => ({
       rest: { repos: { createCommitStatus } }
     }))
     mockContext.eventName = 'push'
     mockContext.payload = {}
-    // clear per-test Copilot stop calls
-    stopMock.mockClear()
-    execMock.mockClear()
   })
 
   it('warns and exits when not a pull_request event', async () => {
@@ -84,128 +62,90 @@ describe('main.ts', () => {
       'Esta acción solo se puede ejecutar en eventos de pull request.'
     )
     expect(getOctokit).toHaveBeenCalled()
+    expect(createOrUpdateComment).not.toHaveBeenCalled()
+    expect(createCommitStatus).not.toHaveBeenCalled()
   })
 
-  it('posts success status when Copilot returns PASS', async () => {
+  it('reports failure when report path does not exist', async () => {
     mockContext.eventName = 'pull_request'
-    mockContext.payload = { pull_request: { html_url: 'https://example/pr/1' } }
-    createSession.mockImplementation(async (opts: unknown) => {
-      if (opts?.onPermissionRequest) {
-        await opts.onPermissionRequest()
-      }
-      return {
-        sendAndWait: jest
-          .fn()
-          .mockResolvedValue({ data: { content: '**Result:** PASS' } })
-      }
-    })
+    mockContext.payload = { pull_request: {} }
 
     await run()
 
-    expect(createSession).toHaveBeenCalled()
     expect(createOrUpdateComment).toHaveBeenCalledWith(
       expect.any(Object),
       expect.any(Object),
-      expect.stringContaining('**Result:** PASS')
+      expect.stringContaining('Report path not found:')
     )
     expect(createCommitStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'success' })
-    )
-    expect(core.setFailed).not.toHaveBeenCalled()
-    // Copilot is stopped in finally
-    expect(stopMock).toHaveBeenCalled()
-  })
-
-  it('posts failure status when Copilot returns FAIL', async () => {
-    mockContext.eventName = 'pull_request'
-    mockContext.payload = { pull_request: { html_url: 'https://example/pr/2' } }
-    createSession.mockResolvedValue({
-      sendAndWait: jest
-        .fn()
-        .mockResolvedValue({ data: { content: '**Result:** FAIL' } })
-    })
-
-    await run()
-
-    expect(createCommitStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'failure' })
+      expect.objectContaining({
+        state: 'failure',
+        context: 'Agent Code Quality Check'
+      })
     )
     expect(core.setFailed).not.toHaveBeenCalled()
   })
 
-  it('sets failed status when an error occurs', async () => {
-    mockContext.eventName = 'pull_request'
-    mockContext.payload = { pull_request: { html_url: 'https://example/pr/3' } }
-    createSession.mockRejectedValueOnce(new Error('session failed'))
+  it('summarizes reports and sets status based on totals when path exists', async () => {
+    const { promises: fs } = await import('fs')
+    const tmpDir = path.join(process.cwd(), '__tmp_reports_main__')
+    await fs.mkdir(tmpDir, { recursive: true })
+    await fs.writeFile(
+      path.join(tmpDir, 'eslint.json'),
+      JSON.stringify([{ errorCount: 1, warningCount: 0 }])
+    )
 
-    await run()
-
-    expect(core.setFailed).toHaveBeenCalledWith('session failed')
-    // Copilot is stopped even on error
-    expect(stopMock).toHaveBeenCalled()
-  })
-
-  it('uses custom report path when provided', async () => {
-    mockContext.eventName = 'pull_request'
-    mockContext.payload = { pull_request: {} }
-    // override getInput for this test
     core.getInput.mockImplementation((name: string) => {
       if (name === 'github_token') return 'ghs_123'
-      if (name === 'report-path') return 'custom.json'
+      if (name === 'report-path') return tmpDir
       return ''
     })
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: {} }
 
-    sendAndWait.mockResolvedValue({ data: { content: 'All good' } })
-    createSession.mockResolvedValue({
-      sendAndWait
+    await run()
+
+    expect(createOrUpdateComment).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.stringContaining('# Code Quality Report')
+    )
+    // One error -> failure status
+    expect(createCommitStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: 'failure',
+        context: 'Agent Code Quality Check'
+      })
+    )
+    await fs.rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it('sets success when there are zero errors', async () => {
+    const { promises: fs } = await import('fs')
+    const tmpDir = path.join(process.cwd(), '__tmp_reports_success__')
+    await fs.mkdir(tmpDir, { recursive: true })
+    // ESLint-style JSON with only warnings
+    await fs.writeFile(
+      path.join(tmpDir, 'eslint.json'),
+      JSON.stringify([{ errorCount: 0, warningCount: 2 }])
+    )
+
+    core.getInput.mockImplementation((name: string) => {
+      if (name === 'github_token') return 'ghs_123'
+      if (name === 'report-path') return tmpDir
+      return ''
     })
+    mockContext.eventName = 'pull_request'
+    mockContext.payload = { pull_request: {} }
 
     await run()
 
     expect(createCommitStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'success' })
+      expect.objectContaining({
+        state: 'success',
+        context: 'Agent Code Quality Check'
+      })
     )
-    // Ensure attachment type is directory with provided path
-    expect(sendAndWait).toHaveBeenCalled()
-    const args = sendAndWait.mock.calls[0][0]
-    expect(args.attachments?.[0]).toEqual(
-      expect.objectContaining({ type: 'directory', path: 'custom.json' })
-    )
-    expect(stopMock).toHaveBeenCalled()
-  })
-
-  it('swallows non-Error exceptions without marking failed', async () => {
-    mockContext.eventName = 'pull_request'
-    mockContext.payload = { pull_request: {} }
-    createSession.mockRejectedValueOnce('not-an-error')
-
-    await run()
-
-    expect(core.setFailed).not.toHaveBeenCalled()
-    expect(stopMock).toHaveBeenCalled()
-  })
-
-  it('treats undefined response as pass via default isPass argument', async () => {
-    mockContext.eventName = 'pull_request'
-    mockContext.payload = { pull_request: {} }
-    createSession.mockResolvedValue({
-      sendAndWait: jest.fn().mockResolvedValue(undefined)
-    })
-
-    await run()
-
-    expect(createCommitStatus).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'success' })
-    )
-    expect(stopMock).toHaveBeenCalled()
-  })
-
-  it('does not create or stop Copilot on non-PR events', async () => {
-    mockContext.eventName = 'push'
-    await run()
-    expect(core.warning).toHaveBeenCalledWith(
-      'Esta acción solo se puede ejecutar en eventos de pull request.'
-    )
-    expect(stopMock).not.toHaveBeenCalled()
+    await fs.rm(tmpDir, { recursive: true, force: true })
   })
 })

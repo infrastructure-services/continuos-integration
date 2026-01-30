@@ -11,5 +11,12 @@
   ],
   "github.copilot.chat.pullRequestDescriptionGeneration.instructions": [
     { "text": "Always include a list of key changes." }
-  ]
+  ],
+  "editor.codeActionsOnSave": {
+    "source.fixAll.ts": "always",
+    "source.fixAll.eslint": "always",
+    "source.fixAll.stylelint": "always",
+    "source.fixAll.prettier": "always"
+  },
+  "editor.formatOnSave": true
 }
