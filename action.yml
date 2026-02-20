@@ -25,7 +25,7 @@ outputs:
     value: ${{ steps.version.outputs.previous-version }}
   branchName:
     description: "Nombre de Branch or Tags"
-    value: ${{ steps.branch.output.BranchName }}
+    value: ${{ steps.branch.outputs.BranchName }}
 
 runs:
   using: "composite"
@@ -35,7 +35,7 @@ runs:
       run: echo "BranchName=$(echo ${GITHUB_REF#refs/heads/})" >> $GITHUB_OUTPUT
       shell: bash
       
-    - name: Get the branch name
+    - name: Get the Repo name
       id: repoName
       run: echo "name=${GITHUB_REPOSITORY##*/}" >> $GITHUB_OUTPUT
       shell: bash
@@ -60,6 +60,7 @@ runs:
         only_version: 'true'
         branches: '${{ steps.semanticBranches.outputs.configureBranch }}' 
         jira_release_name: ${{ steps.repoName.outputs.name }}
+        allow_done_transition: ${{ steps.branch.outputs.BranchName == 'main' || steps.branch.outputs.BranchName == 'hotfix' }}
 
     - name: Valid Version
       run: |
