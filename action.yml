@@ -35,17 +35,18 @@ runs:
         run: |
           echo "Los tópicos del repositorio son: $TOPICS "
 
-      - name: Key Repository
-        id: variables
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const name = context.repo.repo
-            const organization = context.repo.owner
-            core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
+      #- name: Key Repository
+      #  id: variables
+      #  uses: actions/github-script@v7
+      #  with:
+      #    script: |
+      #      const name = context.repo.repo
+      #      const organization = context.repo.owner
+      #      core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
    
-      - name: Set Tags
-        shell: bash
-        run: |
-          curl -X POST -u ${{ inputs.sonar_token }}: '${{ inputs.sonar_url }}/api/project_tags/set' -d tags='cicd, github, ${{ env.TOPICS }}' -d project=${{ env.KEY_REPOSITORY }}
+      #- name: Set Tags
+      #  shell: bash
+      #  run: |
+      #    curl -X POST -u ${{ inputs.sonar_token }}: '${{ inputs.sonar_url }}/api/project_tags/set' -d tags='cicd, github, ${{ env.TOPICS }}' -d project=${{ env.KEY_REPOSITORY }}
+
 
