@@ -97,5 +97,64 @@ runs:
         shell: bash
         run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=unittests.trx" --no-build --no-restore --configuration release 
         working-directory: ${{ inputs.workdir_test }}
+
+      - name: Roslyn Analysis
+        continue-on-error: true
+        run: |
+          dotnet build --no-restore \
+            /p:RunAnalyzersDuringBuild=true \
+            /p:ErrorLog=${{ github.workspace }}/roslyn-analysis.sarif,version=2.1
+        shell: bash
+        working-directory: ${{ inputs.workdir_src }}
+
+      - name: Convert SARIF to XML
+        run: |
+          python3 - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          import xml.etree.ElementTree as ET
+
+          sarif_path = "${{ github.workspace }}/roslyn-analysis.sarif"
+          xml_path = "${{ github.workspace }}/roslyn-analysis.xml"
+
+          with open(sarif_path, "r", encoding="utf-8") as sarif_file:
+              sarif_data = json.load(sarif_file)
+
+          runs = sarif_data.get("runs", [])
+          driver = ((runs[0].get("tool") or {}).get("driver") or {}) if runs else {}
+
+          root = ET.Element(
+              "RoslynAnalysisReport",
+              {
+                  "generatedAt": datetime.now(timezone.utc).isoformat(),
+                  "tool": driver.get("name", ""),
+                  "version": driver.get("version", ""),
+              },
+          )
+
+          for run in runs:
+              for result in run.get("results", []):
+                  issue = ET.SubElement(root, "Issue")
+                  ET.SubElement(issue, "RuleId").text = result.get("ruleId", "")
+                  ET.SubElement(issue, "Level").text = result.get("level", "")
+                  ET.SubElement(issue, "Message").text = (result.get("message") or {}).get("text", "")
+
+                  file_uri = ""
+                  locations = result.get("locations") or []
+                  if locations:
+                      physical_location = (locations[0].get("physicalLocation") or {})
+                      artifact_location = (physical_location.get("artifactLocation") or {})
+                      file_uri = artifact_location.get("uri", "")
+                      region = physical_location.get("region") or {}
+                  else:
+                      region = {}
+                  ET.SubElement(issue, "File").text = file_uri
+                  ET.SubElement(issue, "Line").text = str(region.get("startLine", ""))
+                  ET.SubElement(issue, "Column").text = str(region.get("startColumn", ""))
+
+          ET.ElementTree(root).write(xml_path, encoding="utf-8", xml_declaration=True)
+          PY
+        shell: bash
+        working-directory: ${{ inputs.workdir_src }}
         
 
