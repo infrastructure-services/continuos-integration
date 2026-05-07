@@ -159,6 +159,5 @@ runs:
           ET.ElementTree(root).write(xml_path, encoding="utf-8", xml_declaration=True)
           PY
         shell: bash
-        working-directory: ${{ inputs.workdir_src }}
         
 
