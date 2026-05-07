@@ -112,13 +112,17 @@ runs:
           python3 - <<'PY'
           import json
           from datetime import datetime, timezone
+          from pathlib import Path
           import xml.etree.ElementTree as ET
 
           sarif_path = "${{ github.workspace }}/roslyn-analysis.sarif"
           xml_path = "${{ github.workspace }}/roslyn-analysis.xml"
 
-          with open(sarif_path, "r", encoding="utf-8") as sarif_file:
-              sarif_data = json.load(sarif_file)
+          sarif_data = {"runs": []}
+          sarif_file_path = Path(sarif_path)
+          if sarif_file_path.exists():
+              with sarif_file_path.open("r", encoding="utf-8") as sarif_file:
+                  sarif_data = json.load(sarif_file)
 
           runs = sarif_data.get("runs", [])
           driver = ((runs[0].get("tool") or {}).get("driver") or {}) if runs else {}
