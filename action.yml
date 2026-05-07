@@ -69,6 +69,20 @@ runs:
           dotnet nuget add source https://nuget.pkg.github.com/corporate-solutions-gla/index.json --name corporate-solutions-gla -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
         shell: bash
 
+      - name: Install Roslyn Analyzers
+        run: |
+          if [ ! -f Directory.Build.props ]; then
+            cat > Directory.Build.props << 'EOF'
+          <Project>
+            <ItemGroup>
+              <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" PrivateAssets="all" />
+            </ItemGroup>
+          </Project>
+          EOF
+          fi
+        shell: bash
+        working-directory: ${{ inputs.workdir_src }}
+
       - name: Restore 
         run: dotnet restore
         shell: bash
@@ -98,16 +112,13 @@ runs:
         run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=unittests.trx" --no-build --no-restore --configuration release 
         working-directory: ${{ inputs.workdir_test }}
 
-      - name: Roslyn Analysis
+      - name: Run Roslyn Analyzers
         continue-on-error: true
-        run: |
-          dotnet build --no-restore \
-            /p:RunAnalyzersDuringBuild=true \
-            /p:ErrorLog=${{ github.workspace }}/roslyn-analysis.sarif,version=2.1
+        run: dotnet format analyzers --severity warn --verify-no-changes --report ${{ github.workspace }}/auditoria_resultados
         shell: bash
         working-directory: ${{ inputs.workdir_src }}
 
-      - name: Convert SARIF to XML
+      - name: Convert Roslyn Report to XML
         run: |
           python3 - <<'PY'
           import json
@@ -115,49 +126,34 @@ runs:
           from pathlib import Path
           import xml.etree.ElementTree as ET
 
-          sarif_path = "${{ github.workspace }}/roslyn-analysis.sarif"
+          report_dir = Path("${{ github.workspace }}/auditoria_resultados")
           xml_path = "${{ github.workspace }}/roslyn-analysis.xml"
-
-          sarif_data = {"runs": []}
-          sarif_file_path = Path(sarif_path)
-          if sarif_file_path.exists():
-              with sarif_file_path.open("r", encoding="utf-8") as sarif_file:
-                  sarif_data = json.load(sarif_file)
-
-          runs = sarif_data.get("runs", [])
-          driver = ((runs[0].get("tool") or {}).get("driver") or {}) if runs else {}
 
           root = ET.Element(
               "RoslynAnalysisReport",
               {
                   "generatedAt": datetime.now(timezone.utc).isoformat(),
-                  "tool": driver.get("name", ""),
-                  "version": driver.get("version", ""),
+                  "tool": "dotnet-format",
+                  "severity": "warn",
               },
           )
 
-          for run in runs:
-              for result in run.get("results", []):
-                  issue = ET.SubElement(root, "Issue")
-                  ET.SubElement(issue, "RuleId").text = result.get("ruleId", "")
-                  ET.SubElement(issue, "Level").text = result.get("level", "")
-                  ET.SubElement(issue, "Message").text = (result.get("message") or {}).get("text", "")
-
-                  file_uri = ""
-                  locations = result.get("locations") or []
-                  if locations:
-                      physical_location = (locations[0].get("physicalLocation") or {})
-                      artifact_location = (physical_location.get("artifactLocation") or {})
-                      file_uri = artifact_location.get("uri", "")
-                      region = physical_location.get("region") or {}
-                  else:
-                      region = {}
-                  ET.SubElement(issue, "File").text = file_uri
-                  ET.SubElement(issue, "Line").text = str(region.get("startLine", ""))
-                  ET.SubElement(issue, "Column").text = str(region.get("startColumn", ""))
+          if report_dir.exists():
+              for json_file in sorted(report_dir.glob("*.json")):
+                  with json_file.open("r", encoding="utf-8") as f:
+                      entries = json.load(f)
+                  for entry in (entries if isinstance(entries, list) else []):
+                      for change in entry.get("FileChanges", []):
+                          issue = ET.SubElement(root, "Issue")
+                          ET.SubElement(issue, "RuleId").text = change.get("DiagnosticId", "")
+                          ET.SubElement(issue, "Level").text = change.get("DiagnosticSeverity", "warn")
+                          ET.SubElement(issue, "Message").text = change.get("FormatDescription", "")
+                          ET.SubElement(issue, "File").text = entry.get("FilePath", "")
+                          ET.SubElement(issue, "Line").text = str(change.get("LineNumber", ""))
+                          ET.SubElement(issue, "Column").text = str(change.get("CharNumber", ""))
 
           ET.ElementTree(root).write(xml_path, encoding="utf-8", xml_declaration=True)
           PY
         shell: bash
-        
+
 
