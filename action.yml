@@ -97,7 +97,6 @@ runs:
 
           RESPONSE=$(curl -s -X POST \
             "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/repository/${REPO_ID}/scans" \
-            -H "Authorization: ${TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$BODY")
 
