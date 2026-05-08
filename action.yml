@@ -109,8 +109,27 @@ runs:
         env:
           ASPNETCORE_ENVIRONMENT: Development
         shell: bash
-        run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=unittests.trx" --no-build --no-restore --configuration release 
+        run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=test-results.trx"
         working-directory: ${{ inputs.workdir_test }}
+
+      - name: Install ReportGenerator
+        run: dotnet tool install --global dotnet-reportgenerator-globaltool
+        shell: bash
+
+      - name: Generate Coverage XML Report (Cobertura)
+        run: |
+          reportgenerator \
+            -reports:"${{ inputs.workdir_test }}/TestResults/**/coverage.opencover.xml" \
+            -targetdir:"${{ github.workspace }}/coverage-report" \
+            -reporttypes:"Cobertura" \
+            -verbosity:Info
+        shell: bash
+
+      - name: Upload Coverage XML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-xml
+          path: ${{ github.workspace }}/coverage-report/Cobertura.xml
 
       - name: Run Roslyn Analyzers
         continue-on-error: true
