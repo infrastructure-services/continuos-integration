@@ -213,6 +213,64 @@ runs:
             exit 1
           fi
         shell: bash
-          
+        
+      # ── Métricas de consumo: cloc (Count Lines of Code) ──────────────────────
+      - name: Install cloc
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cloc
+        shell: bash
 
+      - name: Run cloc – Code Metrics (.NET 8)
+        run: |
+          cloc . \
+            --xml \
+            --out="${{ github.workspace }}/cloc-report.xml" \
+            --exclude-dir=bin,obj,.vs,.git,.github,TestResults,coverage-report,auditoria_resultados,packages \
+            --exclude-ext=user,suo,DotSettings,nupkg \
+            --not-match-f="\.(g\.cs|Designer\.cs|AssemblyInfo\.cs|gitignore|gitattributes|editorconfig|sln\.DotSettings)$" \
+            --fullpath \
+            --verbose=0
+          echo "cloc report generated:"
+          cat "${{ github.workspace }}/cloc-report.xml"
+        shell: bash
+        working-directory: ${{ inputs.workdir_src }}
 
+      - name: Upload cloc Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloc-code-metrics-report
+          path: ${{ github.workspace }}/cloc-report.xml
+
+      - name: Download cloc report
+        uses: actions/download-artifact@v4
+        with:
+          name: cloc-code-metrics-report
+          path: cloc-report
+
+      - name: Send cloc report to Sentinel
+        run: |
+          echo "Sending cloc code metrics report..."
+
+          SENSOR_KEY="${{ inputs.sensorKey }}"
+          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/0/sensors/1/report" \
+            -H "Authorization: ${TOKEN}" \
+            -H "Content-Type: multipart/form-data" \
+            -F "report=@cloc-report/cloc-report.xml" \
+            -F "isLastReport=true" \
+            --connect-timeout 30 \
+            --max-time 300 \
+            -w "%{http_code}" \
+            -o cloc_response_body.txt)
+
+          echo "HTTP Status: $RESPONSE"
+          echo "Response body:"
+          cat cloc_response_body.txt
+
+          if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 300 ]; then
+            echo "Upload OK"
+          else
+            echo "Upload FAILED"
+            exit 1
+          fi
+        shell: bash
