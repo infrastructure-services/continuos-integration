@@ -68,7 +68,53 @@ runs:
           dotnet nuget add source https://nuget.pkg.github.com/witwot-jms/index.json --name witwot-jms -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
           dotnet nuget add source https://nuget.pkg.github.com/corporate-solutions-gla/index.json --name corporate-solutions-gla -u ${{ inputs.github_username }} -p ${{ inputs.github_token }} --store-password-in-clear-text
         shell: bash
+        
+      - name: Create Sentinel Scan
+        id: sentinel-scan
+        run: |
+          REPO_ID="${{ github.repository_id }}"
+          BRANCH="${{ github.ref_name }}"
+          COMMIT_SHA="${{ github.sha }}"
+          TRIGGERED_BY="${{ github.actor }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
 
+          BODY=$(jq -n \
+            --arg branch        "$BRANCH" \
+            --arg commitSha     "$COMMIT_SHA" \
+            --arg triggeredBy   "$TRIGGERED_BY" \
+            --arg prNumber      "$PR_NUMBER" \
+            --arg prTitle       "$PR_TITLE" \
+            '{
+              branch:            $branch,
+              commitSha:         $commitSha,
+              pullRequestNumber: (if $prNumber == "" then null else ($prNumber | tonumber) end),
+              pullRequestTitle:  (if $prTitle  == "" then null else $prTitle end),
+              triggeredBy:       $triggeredBy
+            }')
+
+          echo "Request body: $BODY"
+
+          RESPONSE=$(curl -s -X POST \
+            "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/repository/${REPO_ID}/scans" \
+            -H "Authorization: ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY")
+
+          echo "Sentinel response: $RESPONSE"
+
+          SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId')
+
+          if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
+            echo "ERROR: No se pudo obtener el scanId de Sentinel"
+            exit 1
+          fi
+
+          echo "SCAN_ID=${SCAN_ID}" >> $GITHUB_ENV
+          echo "scanId=${SCAN_ID}" >> $GITHUB_OUTPUT
+          echo "Sentinel Scan creado con ID: ${SCAN_ID}"
+        shell: bash
+        
       - name: Install Roslyn Analyzers
         run: |
           if [ ! -f Directory.Build.props ]; then
@@ -192,8 +238,7 @@ runs:
           echo "Sending Roslyn report..."
       
           SENSOR_KEY="${{ inputs.sensorKey }}"      
-          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/0/sensors/1/report" \
-            -H "Authorization: ${TOKEN}" \
+          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/${SCAN_ID}/sensors/1/report" \            -H "Authorization: ${TOKEN}" \
             -H "Content-Type: multipart/form-data" \
             -F "report=@report/roslyn-analysis.xml" \
             -F "isLastReport=false" \
