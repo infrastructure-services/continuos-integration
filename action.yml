@@ -298,8 +298,7 @@ runs:
           echo "Sending cloc code metrics report..."
 
           SENSOR_KEY="${{ inputs.sensorKey }}"
-          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/0/sensors/1/report" \
-            -H "Authorization: ${TOKEN}" \
+          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/${SCAN_ID}/sensors/1/report" \            -H "Authorization: ${TOKEN}" \
             -H "Content-Type: multipart/form-data" \
             -F "report=@cloc-report/cloc-report.xml" \
             -F "isLastReport=true" \
