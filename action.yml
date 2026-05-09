@@ -73,7 +73,7 @@ runs:
         id: sentinel-scan
         run: |
           REPO_ID="${{ github.repository_id }}"
-          BRANCH="${{ github.ref_name }}"
+          BRANCH="${{ github.head_ref || github.ref_name }}"
           COMMIT_SHA="${{ github.sha }}"
           TRIGGERED_BY="${{ github.actor }}"
           PR_NUMBER="${{ github.event.pull_request.number }}"
@@ -237,7 +237,8 @@ runs:
           echo "Sending Roslyn report..."
       
           SENSOR_KEY="${{ inputs.sensorKey }}"      
-          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/${SCAN_ID}/sensors/1/report" \            -H "Authorization: ${TOKEN}" \
+          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/${SCAN_ID}/sensors/1/report" \
+            -H "Authorization: ${TOKEN}" \
             -H "Content-Type: multipart/form-data" \
             -F "report=@report/roslyn-analysis.xml" \
             -F "isLastReport=false" \
@@ -297,7 +298,8 @@ runs:
           echo "Sending cloc code metrics report..."
 
           SENSOR_KEY="${{ inputs.sensorKey }}"
-          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/${SCAN_ID}/sensors/1/report" \            -H "Authorization: ${TOKEN}" \
+          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/${SCAN_ID}/sensors/1/report" \
+            -H "Authorization: ${TOKEN}" \
             -H "Content-Type: multipart/form-data" \
             -F "report=@cloc-report/cloc-report.xml" \
             -F "isLastReport=true" \
