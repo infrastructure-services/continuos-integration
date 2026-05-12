@@ -154,21 +154,6 @@ runs:
         run: dotnet tool install --global dotnet-reportgenerator-globaltool
         shell: bash
 
-      - name: Generate Coverage XML Report (Cobertura)
-        run: |
-          reportgenerator \
-            -reports:"${{ inputs.workdir_test }}/TestResults/**/coverage.opencover.xml" \
-            -targetdir:"${{ github.workspace }}/coverage-report" \
-            -reporttypes:"Cobertura" \
-            -verbosity:Info
-        shell: bash
-
-      - name: Upload Coverage XML Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report-xml
-          path: ${{ github.workspace }}/coverage-report/Cobertura.xml
-
       - name: Run Roslyn Analyzers
         continue-on-error: true
         run: dotnet format analyzers --severity warn --verify-no-changes --report ${{ github.workspace }}/auditoria_resultados
