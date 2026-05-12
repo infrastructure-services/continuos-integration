@@ -150,10 +150,6 @@ runs:
         run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=test-results.trx"
         working-directory: ${{ inputs.workdir_test }}
 
-      - name: Install ReportGenerator
-        run: dotnet tool install --global dotnet-reportgenerator-globaltool
-        shell: bash
-
       - name: Run Roslyn Analyzers
         continue-on-error: true
         run: dotnet format analyzers --severity warn --verify-no-changes --report ${{ github.workspace }}/auditoria_resultados
