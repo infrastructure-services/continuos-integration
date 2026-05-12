@@ -45,13 +45,6 @@ runs:
             const name = context.repo.repo
             const organization = context.repo.owner
             core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
-
-      - name: Setup Pre requisitos
-        uses: architecture-it/actions@sonar-prerequisitos
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_key:  ${{ env.KEY_REPOSITORY }}
             
       - name: Setup dotnet
         uses: actions/setup-dotnet@v1
