@@ -295,7 +295,7 @@ runs:
             -H "Authorization: ${TOKEN}" \
             -H "Content-Type: multipart/form-data" \
             -F "report=@cloc-report/cloc-report.xml" \
-            -F "isLastReport=true" \
+            -F "isLastReport=false" \
             --connect-timeout 30 \
             --max-time 300 \
             -w "%{http_code}" \
@@ -304,6 +304,67 @@ runs:
           echo "HTTP Status: $RESPONSE"
           echo "Response body:"
           cat cloc_response_body.txt
+
+          if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 300 ]; then
+            echo "Upload OK"
+          else
+            echo "Upload FAILED"
+            exit 1
+          fi
+        shell: bash
+
+      # ── Detección de código duplicado: jscpd ─────────────────────────────────
+      - name: Install jscpd
+        run: |
+          npm install -g jscpd
+        shell: bash
+
+      - name: Run jscpd – Duplicate Code Detection
+        continue-on-error: true
+        run: |
+          jscpd . \
+            --reporters "xml" \
+            --output "${{ github.workspace }}/jscpd-report" \
+            --min-lines 5 \
+            --min-tokens 50 \
+            --threshold 0 \
+            --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/auditoria_resultados/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
+            --format "csharp,xml,json,yaml,markdown"
+          echo "jscpd report generated:"
+          ls -la "${{ github.workspace }}/jscpd-report/" || echo "No report directory found"
+        shell: bash
+        working-directory: ${{ inputs.workdir_src }}
+
+      - name: Upload jscpd Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jscpd-duplicate-code-report
+          path: ${{ github.workspace }}/jscpd-report/jscpd-report.xml
+
+      - name: Download jscpd report
+        uses: actions/download-artifact@v4
+        with:
+          name: jscpd-duplicate-code-report
+          path: jscpd-report
+
+      - name: Send jscpd report to Sentinel
+        run: |
+          echo "Sending jscpd duplicate code report..."
+
+          SENSOR_KEY="${{ inputs.sensorKey }}"
+          RESPONSE=$(curl -X POST "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar/api/v1/scans/${SCAN_ID}/sensors/1/report" \
+            -H "Authorization: ${TOKEN}" \
+            -H "Content-Type: multipart/form-data" \
+            -F "report=@jscpd-report/jscpd-report.xml" \
+            -F "isLastReport=true" \
+            --connect-timeout 30 \
+            --max-time 300 \
+            -w "%{http_code}" \
+            -o jscpd_response_body.txt)
+
+          echo "HTTP Status: $RESPONSE"
+          echo "Response body:"
+          cat jscpd_response_body.txt
 
           if [ "$RESPONSE" -ge 200 ] && [ "$RESPONSE" -lt 300 ]; then
             echo "Upload OK"
