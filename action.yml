@@ -227,9 +227,14 @@ runs:
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
     # ── Métricas de consumo: cloc (Count Lines of Code) ──────────────────────
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
     - name: Install cloc
       shell: bash
-      run: sudo apt-get update -qq && sudo apt-get install -y cloc
+      run: npm install -g cloc
 
     - name: Run cloc – Code Metrics
       shell: bash
