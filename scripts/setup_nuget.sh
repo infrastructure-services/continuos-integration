@@ -14,8 +14,12 @@ ORGS=(
 
 dotnet nuget locals -c all
 
+# La salida de `dotnet nuget list source` tiene el formato:
+#   1.  nombre-source [Enabled]
+#       https://...
+# El patrón busca el nombre precedido por número+puntos+espacios.
 for org in "${ORGS[@]}"; do
-  if dotnet nuget list source | grep -q "^[[:space:]]*${org}[[:space:]]"; then
+  if dotnet nuget list source | grep -qE "[0-9]+\.[[:space:]]+${org}[[:space:]]"; then
     echo "ℹ️  NuGet source '${org}' ya existe. Actualizando credenciales..."
     dotnet nuget update source "$org" \
       -u "${NUGET_USERNAME}" \
