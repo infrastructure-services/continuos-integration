@@ -166,14 +166,37 @@ runs:
 
     # ── Roslyn Analyzers ──────────────────────────────────────────────────────
     - name: Run Roslyn Analyzers
-      continue-on-error: true
       shell: bash
       working-directory: ${{ inputs.workdir_src }}
-      run: >-
-        dotnet format analyzers
-        --severity warn
-        --verify-no-changes
-        --report "${{ github.workspace }}/auditoria_resultados"
+      run: |
+        set +e
+        dotnet format analyzers \
+          --severity warn \
+          --verify-no-changes \
+          --report "${{ github.workspace }}/auditoria_resultados"
+        EXIT_CODE=$?
+        set -e
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "✅ Roslyn Analyzers: no se encontraron issues."
+        elif [ "$EXIT_CODE" -eq 2 ]; then
+          ISSUE_COUNT=0
+          REPORT_DIR="${{ github.workspace }}/auditoria_resultados"
+
+          if [ -d "$REPORT_DIR" ]; then
+            while IFS= read -r -d '' report_file; do
+              FILE_ISSUES=$(jq -r 'if type=="array" then map((.FileChanges // []) | length) | add // 0 else 0 end' "$report_file" 2>/dev/null || echo 0)
+              if [[ "$FILE_ISSUES" =~ ^[0-9]+$ ]]; then
+                ISSUE_COUNT=$((ISSUE_COUNT + FILE_ISSUES))
+              fi
+            done < <(find "$REPORT_DIR" -type f -name "*.json" -print0)
+          fi
+
+          echo "✅ Reporte generado: se encontraron ${ISSUE_COUNT} issue(s)/warning(s) de Roslyn. Ver roslyn-analysis.xml para el detalle."
+        else
+          echo "❌ Error inesperado en dotnet format analyzers (exit code: $EXIT_CODE)."
+          exit "$EXIT_CODE"
+        fi
 
     - name: Convert Roslyn Report to XML
       shell: bash
