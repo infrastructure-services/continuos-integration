@@ -56,7 +56,7 @@ runs:
   using: "composite"
   steps:
       - name: "Build and Test"
-        uses: architecture-it/actions@react-base
+        uses: architecture-it/actions@cicdv3-react-base
         with:
           matrix_version: ${{ inputs.matrix_version }}
           packages_token: ${{ inputs.github_token }}
