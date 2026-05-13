@@ -185,9 +185,14 @@ runs:
 
           if [ -d "$REPORT_DIR" ]; then
             while IFS= read -r -d '' report_file; do
-              FILE_ISSUES=$(jq -r 'if type=="array" then map((.FileChanges // []) | length) | add // 0 else 0 end' "$report_file" 2>/dev/null || echo 0)
-              if [[ "$FILE_ISSUES" =~ ^[0-9]+$ ]]; then
-                ISSUE_COUNT=$((ISSUE_COUNT + FILE_ISSUES))
+              if FILE_ISSUES=$(jq -r 'if type=="array" then map((.FileChanges // []) | length) | add // 0 else 0 end' "$report_file" 2>/dev/null); then
+                if [[ "$FILE_ISSUES" =~ ^[0-9]+$ ]]; then
+                  ISSUE_COUNT=$((ISSUE_COUNT + FILE_ISSUES))
+                else
+                  echo "⚠️ No se pudo interpretar el conteo de issues en $report_file (valor: $FILE_ISSUES). Se contabiliza 0."
+                fi
+              else
+                echo "⚠️ No se pudo parsear el reporte JSON $report_file. Se contabiliza 0."
               fi
             done < <(find "$REPORT_DIR" -type f -name "*.json" -print0)
           fi
