@@ -203,7 +203,7 @@ runs:
           exit "$EXIT_CODE"
         fi
 
-    - name: Consolidate Roslyn Report to JSON
+    - name: Convert Roslyn Report to JSON
       shell: bash
       env:
         REPORT_DIR: ${{ github.workspace }}/auditoria_resultados
