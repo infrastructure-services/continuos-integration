@@ -15,10 +15,19 @@ ORGS=(
 dotnet nuget locals -c all
 
 for org in "${ORGS[@]}"; do
-  dotnet nuget add source \
-    "https://nuget.pkg.github.com/${org}/index.json" \
-    --name "$org" \
-    -u "${NUGET_USERNAME}" \
-    -p "${NUGET_PASSWORD}" \
-    --store-password-in-clear-text
+  if dotnet nuget list source | grep -q "^[[:space:]]*${org}[[:space:]]"; then
+    echo "ℹ️  NuGet source '${org}' ya existe. Actualizando credenciales..."
+    dotnet nuget update source "$org" \
+      -u "${NUGET_USERNAME}" \
+      -p "${NUGET_PASSWORD}" \
+      --store-password-in-clear-text
+  else
+    echo "➕ Agregando NuGet source '${org}'..."
+    dotnet nuget add source \
+      "https://nuget.pkg.github.com/${org}/index.json" \
+      --name "$org" \
+      -u "${NUGET_USERNAME}" \
+      -p "${NUGET_PASSWORD}" \
+      --store-password-in-clear-text
+  fi
 done
