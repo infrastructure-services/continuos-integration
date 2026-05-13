@@ -197,24 +197,24 @@ runs:
             done < <(find "$REPORT_DIR" -type f -name "*.json" -print0)
           fi
 
-          echo "✅ Reporte generado: se encontraron ${ISSUE_COUNT} issue(s)/warning(s) de Roslyn. Ver roslyn-analysis.xml (generado en el siguiente step) para el detalle."
+          echo "✅ Reporte generado: se encontraron ${ISSUE_COUNT} issue(s)/warning(s) de Roslyn. Ver roslyn-analysis.json (generado en el siguiente step) para el detalle."
         else
           echo "❌ Error inesperado en dotnet format analyzers (exit code: $EXIT_CODE)."
           exit "$EXIT_CODE"
         fi
 
-    - name: Convert Roslyn Report to XML
+    - name: Consolidate Roslyn Report to JSON
       shell: bash
       env:
         REPORT_DIR: ${{ github.workspace }}/auditoria_resultados
-        XML_OUTPUT: ${{ github.workspace }}/roslyn-analysis.xml
-      run: python3 "${{ github.action_path }}/scripts/roslyn_to_xml.py"
+        JSON_OUTPUT: ${{ github.workspace }}/roslyn-analysis.json
+      run: python3 "${{ github.action_path }}/scripts/roslyn_to_json.py"
 
     - name: Upload Roslyn Analysis Report
       uses: actions/upload-artifact@v4
       with:
         name: roslyn-analysis-report
-        path: ${{ github.workspace }}/roslyn-analysis.xml
+        path: ${{ github.workspace }}/roslyn-analysis.json
 
     - name: Send Roslyn report to Sentinel
       shell: bash
@@ -222,7 +222,7 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "roslyn"
-        REPORT_PATH: ${{ github.workspace }}/roslyn-analysis.xml
+        REPORT_PATH: ${{ github.workspace }}/roslyn-analysis.json
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
@@ -241,8 +241,8 @@ runs:
       working-directory: ${{ inputs.workdir_src }}
       run: |
         cloc . \
-          --xml \
-          --out="${{ github.workspace }}/cloc-report.xml" \
+          --json \
+          --out="${{ github.workspace }}/cloc-report.json" \
           --exclude-dir=bin,obj,.vs,.git,.github,TestResults,coverage-report,auditoria_resultados,packages \
           --exclude-ext=user,suo,DotSettings,nupkg \
           --not-match-f="\.(g\.cs|Designer\.cs|AssemblyInfo\.cs|gitignore|gitattributes|editorconfig|sln\.DotSettings)$" \
@@ -253,7 +253,7 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: cloc-code-metrics-report
-        path: ${{ github.workspace }}/cloc-report.xml
+        path: ${{ github.workspace }}/cloc-report.json
 
     - name: Send cloc report to Sentinel
       shell: bash
@@ -261,7 +261,7 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "cloc"
-        REPORT_PATH: ${{ github.workspace }}/cloc-report.xml
+        REPORT_PATH: ${{ github.workspace }}/cloc-report.json
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
@@ -276,7 +276,7 @@ runs:
       working-directory: ${{ inputs.workdir_src }}
       run: |
         jscpd . \
-          --reporters "xml" \
+          --reporters "json" \
           --output "${{ github.workspace }}/jscpd-report" \
           --min-lines 5 \
           --min-tokens 50 \
@@ -288,7 +288,7 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: jscpd-duplicate-code-report
-        path: ${{ github.workspace }}/jscpd-report/jscpd-report.xml
+        path: ${{ github.workspace }}/jscpd-report/jscpd-report.json
 
     - name: Send jscpd report to Sentinel
       shell: bash
@@ -296,6 +296,6 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "jscpd"
-        REPORT_PATH: ${{ github.workspace }}/jscpd-report/jscpd-report.xml
+        REPORT_PATH: ${{ github.workspace }}/jscpd-report/jscpd-report.json
         IS_LAST_REPORT: "true"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"

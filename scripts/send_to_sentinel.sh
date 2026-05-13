@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Envía un reporte XML a la API de Sentinel.
+# Envía un reporte (JSON u otro formato) a la API de Sentinel.
 #
 # Variables de entorno requeridas:
 #   SENTINEL_URL     - URL base de la API (sin trailing slash)
 #   SCAN_ID          - ID del scan creado en Sentinel
 #   SENSOR_ID        - ID del sensor al que pertenece el reporte
-#   REPORT_PATH      - Ruta absoluta al archivo XML a enviar
+#   REPORT_PATH      - Ruta absoluta al archivo a enviar
 #   IS_LAST_REPORT   - "true" si es el último reporte del scan, "false" si no
 set -euo pipefail
 
