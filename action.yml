@@ -203,6 +203,11 @@ runs:
           exit "$EXIT_CODE"
         fi
 
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
     - name: Convert Roslyn Report to XML
       shell: bash
       env:
