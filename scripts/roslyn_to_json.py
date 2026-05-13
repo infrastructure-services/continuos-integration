@@ -23,20 +23,20 @@ if report_dir.exists():
         for entry in (entries if isinstance(entries, list) else []):
             for change in entry.get("FileChanges", []):
                 issues.append({
-                    "ruleId":    change.get("DiagnosticId", ""),
-                    "level":     change.get("DiagnosticSeverity", "warn"),
-                    "message":   change.get("FormatDescription", ""),
-                    "file":      entry.get("FilePath", ""),
-                    "line":      change.get("LineNumber"),
-                    "column":    change.get("CharNumber"),
+                    "RuleId":   change.get("DiagnosticId", ""),
+                    "Level":    change.get("DiagnosticSeverity", "warn"),
+                    "Message":  change.get("FormatDescription", ""),
+                    "File":     entry.get("FilePath", ""),
+                    "Line":     change.get("LineNumber"),
+                    "Column":   change.get("CharNumber"),
                 })
 
 report = {
-    "generatedAt": datetime.now(timezone.utc).isoformat(),
-    "tool": "dotnet-format",
-    "severity": "warn",
-    "issues": issues,
-    "totalIssues": len(issues),
+    "GeneratedAt": datetime.now(timezone.utc).isoformat(),
+    "Tool": "dotnet-format",
+    "Severity": "warn",
+    "Issues": issues,
+    "TotalIssues": len(issues),
 }
 
 with open(json_path, "w", encoding="utf-8") as f:
