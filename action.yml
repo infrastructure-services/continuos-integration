@@ -185,19 +185,19 @@ runs:
 
           if [ -d "$REPORT_DIR" ]; then
             while IFS= read -r -d '' report_file; do
-              if FILE_ISSUES=$(jq -r 'if type=="array" then map((.FileChanges // []) | length) | add // 0 else 0 end' "$report_file" 2>/dev/null); then
+              if FILE_ISSUES=$(jq -r 'if type=="array" then map((.FileChanges // []) | length) | add // 0 else 0 end' "$report_file" 2>&1); then
                 if [[ "$FILE_ISSUES" =~ ^[0-9]+$ ]]; then
                   ISSUE_COUNT=$((ISSUE_COUNT + FILE_ISSUES))
                 else
                   echo "⚠️ No se pudo interpretar el conteo de issues en $report_file (valor: $FILE_ISSUES). Se contabiliza 0."
                 fi
               else
-                echo "⚠️ No se pudo parsear el reporte JSON $report_file. Se contabiliza 0."
+                echo "⚠️ No se pudo parsear el reporte JSON $report_file: $FILE_ISSUES. Se contabiliza 0."
               fi
             done < <(find "$REPORT_DIR" -type f -name "*.json" -print0)
           fi
 
-          echo "✅ Reporte generado: se encontraron ${ISSUE_COUNT} issue(s)/warning(s) de Roslyn. Ver roslyn-analysis.xml para el detalle."
+          echo "✅ Reporte generado: se encontraron ${ISSUE_COUNT} issue(s)/warning(s) de Roslyn. Ver roslyn-analysis.xml (generado en el siguiente step) para el detalle."
         else
           echo "❌ Error inesperado en dotnet format analyzers (exit code: $EXIT_CODE)."
           exit "$EXIT_CODE"
