@@ -165,13 +165,12 @@ runs:
 
     - name: Generate Coverage XML Report (Cobertura)
       shell: bash
-      run: |
-        export PATH="$HOME/.dotnet/tools:$PATH"
-        reportgenerator \
-          -reports:"${{ inputs.workdir_test }}/TestResults/**/coverage.opencover.xml" \
-          -targetdir:"${{ github.workspace }}/coverage-report" \
-          -reporttypes:"Cobertura" \
-          -verbosity:Info
+      run: >-
+        dotnet test
+        --collect:"XPlat Code Coverage"
+        --results-directory TestResults/
+        --logger "trx;LogFileName=test-results.trx"
+        -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
 
     - name: Upload Coverage XML Report
       uses: actions/upload-artifact@v4
