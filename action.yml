@@ -235,7 +235,15 @@ runs:
     - name: Install cloc
       shell: bash
       run: |
-        sudo apt-get install -y perl
+        if command -v apt-get &>/dev/null; then
+          sudo apt-get install -y perl
+        elif command -v apk &>/dev/null; then
+          apk add --no-cache perl
+        elif command -v yum &>/dev/null; then
+          sudo yum install -y perl
+        else
+          echo "⚠️ No se encontró gestor de paquetes, intentando continuar..."
+        fi
         npm install -g cloc
 
     - name: Run cloc – Code Metrics
