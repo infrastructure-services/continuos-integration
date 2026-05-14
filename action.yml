@@ -178,6 +178,16 @@ runs:
         name: coverage-report-xml
         path: ${{ github.workspace }}/coverage-report/Cobertura.xml
 
+    - name: Send Coverage report to Sentinel
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "coverage"
+        REPORT_PATH: ${{ github.workspace }}/coverage-report/Cobertura.xml
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
     # ── Roslyn Analyzers ──────────────────────────────────────────────────────
     - name: Run Roslyn Analyzers
       shell: bash
