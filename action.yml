@@ -234,7 +234,9 @@ runs:
 
     - name: Install cloc
       shell: bash
-      run: npm install -g cloc
+      run: |
+        sudo apt-get install -y perl
+        npm install -g cloc
 
     - name: Run cloc – Code Metrics
       shell: bash
