@@ -131,7 +131,7 @@ runs:
 
     - name: "Continuos Integration React"
       if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' }}
-      uses: infrastructure-services/continuos-integration@react
+      uses: infrastructure-services/continuos-integration@react-cicdv3-test
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
