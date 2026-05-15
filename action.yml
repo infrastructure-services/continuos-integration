@@ -169,7 +169,7 @@ runs:
       shell: bash
       run: |
         reportgenerator \
-          "-reports:${{ inputs.workdir_test }}TestResults/**/coverage.opencover.xml" \
+          "-reports:${{ github.workspace }}/${{ inputs.workdir_test }}TestResults/**/coverage.opencover.xml" \
           "-targetdir:${{ github.workspace }}/coverage-report" \
           "-reporttypes:Cobertura"
 
