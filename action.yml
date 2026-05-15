@@ -161,7 +161,9 @@ runs:
 
     - name: Install ReportGenerator
       shell: bash
-      run: dotnet tool install --global dotnet-reportgenerator-globaltool
+      run: |
+        dotnet tool install --global dotnet-reportgenerator-globaltool
+        echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
     - name: Generate Coverage XML Report (Cobertura)
       shell: bash
