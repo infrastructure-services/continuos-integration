@@ -156,28 +156,19 @@ runs:
       env:
         ASPNETCORE_ENVIRONMENT: Development
       shell: bash
-      run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=test-results.trx"
+      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       working-directory: ${{ inputs.workdir_test }}
+#      continue-on-error: true
 
-    - name: Install ReportGenerator
+    - name: Merge Coverage Reports
       shell: bash
       run: |
-        dotnet tool install --global dotnet-reportgenerator-globaltool
-        echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-
-    - name: Generate Coverage XML Report (Cobertura)
-      shell: bash
-      run: |
+        dotnet tool install -g dotnet-reportgenerator-globaltool || true
+        export PATH="$HOME/.dotnet/tools:$PATH"
         reportgenerator \
-          "-reports:${{ github.workspace }}/${{ inputs.workdir_test }}TestResults/**/coverage.opencover.xml" \
-          "-targetdir:${{ github.workspace }}/coverage-report" \
+          "-reports:${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" \
+          "-targetdir:${{ github.workspace }}/TestResults/merged" \
           "-reporttypes:Cobertura"
-
-    - name: Upload Coverage XML Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-report-xml
-        path: ${{ github.workspace }}/coverage-report/Cobertura.xml
 
     - name: Send Coverage report to Sentinel
       shell: bash
@@ -185,7 +176,7 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "Coverlet"
-        REPORT_PATH: ${{ github.workspace }}/coverage-report/Cobertura.xml
+        REPORT_PATH: ${{ github.workspace }}/TestResults/merged/Cobertura.xml
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
