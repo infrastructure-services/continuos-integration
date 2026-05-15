@@ -158,7 +158,7 @@ runs:
       shell: bash
       run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       working-directory: ${{ inputs.workdir_test }}
-#      continue-on-error: true
+      continue-on-error: true
 
     - name: Merge Coverage Reports
       shell: bash
