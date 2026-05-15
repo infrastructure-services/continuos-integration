@@ -198,48 +198,24 @@ runs:
         dotnet format analyzers \
           --severity warn \
           --verify-no-changes \
-          --report "${{ github.workspace }}/auditoria_resultados"
+          --report "${{ github.workspace }}/roslyn-report"
         EXIT_CODE=$?
         set -e
 
         if [ "$EXIT_CODE" -eq 0 ]; then
           echo "✅ Roslyn Analyzers: no se encontraron issues."
         elif [ "$EXIT_CODE" -eq 2 ]; then
-          ISSUE_COUNT=0
-          REPORT_DIR="${{ github.workspace }}/auditoria_resultados"
-
-          if [ -d "$REPORT_DIR" ]; then
-            while IFS= read -r -d '' report_file; do
-              if FILE_ISSUES=$(jq -r 'if type=="array" then map((.FileChanges // []) | length) | add // 0 else 0 end' "$report_file" 2>&1); then
-                if [[ "$FILE_ISSUES" =~ ^[0-9]+$ ]]; then
-                  ISSUE_COUNT=$((ISSUE_COUNT + FILE_ISSUES))
-                else
-                  echo "⚠️ No se pudo interpretar el conteo de issues en $report_file (valor: $FILE_ISSUES). Se contabiliza 0."
-                fi
-              else
-                echo "⚠️ No se pudo parsear el reporte JSON $report_file: $FILE_ISSUES. Se contabiliza 0."
-              fi
-            done < <(find "$REPORT_DIR" -type f -name "*.json" -print0)
-          fi
-
-          echo "✅ Reporte generado: se encontraron ${ISSUE_COUNT} issue(s)/warning(s) de Roslyn. Ver roslyn-analysis.json (generado en el siguiente step) para el detalle."
+          echo "✅ Roslyn Analyzers: se encontraron issues/warnings. Ver roslyn-report/format-report.json para el detalle."
         else
           echo "❌ Error inesperado en dotnet format analyzers (exit code: $EXIT_CODE)."
           exit "$EXIT_CODE"
         fi
 
-    - name: Convert Roslyn Report to JSON
-      shell: bash
-      env:
-        REPORT_DIR: ${{ github.workspace }}/auditoria_resultados
-        JSON_OUTPUT: ${{ github.workspace }}/roslyn-analysis.json
-      run: python3 "${{ github.action_path }}/scripts/roslyn_to_json.py"
-
     - name: Upload Roslyn Analysis Report
       uses: actions/upload-artifact@v4
       with:
         name: roslyn-analysis-report
-        path: ${{ github.workspace }}/roslyn-analysis.json
+        path: ${{ github.workspace }}/roslyn-report/format-report.json
 
     - name: Send Roslyn report to Sentinel
       shell: bash
@@ -247,7 +223,7 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "roslyn"
-        REPORT_PATH: ${{ github.workspace }}/roslyn-analysis.json
+        REPORT_PATH: ${{ github.workspace }}/roslyn-report/format-report.json
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
@@ -278,7 +254,7 @@ runs:
         cloc . \
           --json \
           --out="${{ github.workspace }}/cloc-report.json" \
-          --exclude-dir=bin,obj,.vs,.git,.github,TestResults,coverage-report,auditoria_resultados,packages \
+          --exclude-dir=bin,obj,.vs,.git,.github,TestResults,coverage-report,roslyn-report,packages \
           --exclude-ext=user,suo,DotSettings,nupkg \
           --not-match-f="\.(g\.cs|Designer\.cs|AssemblyInfo\.cs|gitignore|gitattributes|editorconfig|sln\.DotSettings)$" \
           --fullpath \
@@ -316,7 +292,7 @@ runs:
           --min-lines 5 \
           --min-tokens 50 \
           --threshold 0 \
-          --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/auditoria_resultados/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
+          --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/roslyn-report/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
           --format "csharp,xml,json,yaml,markdown"
 
     - name: Upload jscpd Report
