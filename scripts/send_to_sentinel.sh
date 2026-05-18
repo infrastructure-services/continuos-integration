@@ -7,7 +7,7 @@
 #   SENSOR_ID        - ID del sensor al que pertenece el reporte
 #   REPORT_PATH      - Ruta absoluta al archivo a enviar
 #   IS_LAST_REPORT   - "true" si es el último reporte del scan, "false" si no
-set -euo pipefail
+set -uo pipefail
 
 echo "Enviando reporte a Sentinel: ${REPORT_PATH}"
 
@@ -28,6 +28,5 @@ cat sentinel_response.txt
 if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
   echo "Upload OK"
 else
-  echo "Upload FAILED"
-  exit 1
+  echo "⚠️ WARNING: Sentinel respondió con HTTP ${HTTP_STATUS}. El reporte puede no haberse registrado, pero el workflow continúa."
 fi

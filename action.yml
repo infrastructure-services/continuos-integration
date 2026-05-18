@@ -171,6 +171,7 @@ runs:
           "-reporttypes:Cobertura"
 
     - name: Send Coverage report to Sentinel
+      continue-on-error: true
       shell: bash
       env:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
@@ -209,6 +210,7 @@ runs:
         path: ${{ github.workspace }}/roslyn-report/format-report.json
 
     - name: Send Roslyn report to Sentinel
+      continue-on-error: true
       shell: bash
       env:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
@@ -258,6 +260,7 @@ runs:
         path: ${{ github.workspace }}/cloc-report.json
 
     - name: Send cloc report to Sentinel
+      continue-on-error: true
       shell: bash
       env:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
@@ -293,6 +296,7 @@ runs:
         path: ${{ github.workspace }}/jscpd-report/jscpd-report.json
 
     - name: Send jscpd report to Sentinel
+      continue-on-error: true
       shell: bash
       env:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
