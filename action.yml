@@ -103,6 +103,9 @@ runs:
         echo "Sentinel response: $RESPONSE"
 
         SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId')
+        PROJECT_ID=$(echo "$RESPONSE" | jq -r '.projectId')
+        APPLICATION_ID=$(echo "$RESPONSE" | jq -r '.applicationId')
+        ORGANIZATION_ID=$(echo "$RESPONSE" | jq -r '.organizationId')
 
         if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
           echo "ERROR: No se pudo obtener el scanId de Sentinel"
@@ -110,8 +113,17 @@ runs:
         fi
 
         echo "SCAN_ID=${SCAN_ID}" >> $GITHUB_ENV
+        echo "PROJECT_ID=${PROJECT_ID}" >> $GITHUB_ENV
+        echo "APPLICATION_ID=${APPLICATION_ID}" >> $GITHUB_ENV
+        echo "ORGANIZATION_ID=${ORGANIZATION_ID}" >> $GITHUB_ENV
+
         echo "scanId=${SCAN_ID}" >> $GITHUB_OUTPUT
+        echo "projectId=${PROJECT_ID}" >> $GITHUB_OUTPUT
+        echo "applicationId=${APPLICATION_ID}" >> $GITHUB_OUTPUT
+        echo "organizationId=${ORGANIZATION_ID}" >> $GITHUB_OUTPUT
+
         echo "Sentinel Scan creado con ID: ${SCAN_ID}"
+        echo "Project ID: ${PROJECT_ID} | Application ID: ${APPLICATION_ID} | Organization ID: ${ORGANIZATION_ID}"
 
     - name: Install Roslyn Analyzers
       shell: bash
@@ -156,7 +168,7 @@ runs:
       env:
         ASPNETCORE_ENVIRONMENT: Development
       shell: bash
-      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors[...]
       working-directory: ${{ inputs.workdir_test }}
       continue-on-error: true
 
@@ -169,7 +181,7 @@ runs:
           "-reports:${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" \
           "-targetdir:${{ github.workspace }}/TestResults/merged" \
           "-reporttypes:Cobertura" \
-          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*;-*Entity;-*Event;-*Vm;-*Exception"
+          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations[...]
 
     - name: Send Coverage report to Sentinel
       continue-on-error: true
