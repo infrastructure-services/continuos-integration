@@ -338,6 +338,42 @@ runs:
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
     # ── Pull Request Feedback ─────────────────────────────────────────────────
+    - name: Collect Metrics
+      id: metrics
+      continue-on-error: true
+      shell: bash
+      run: |
+        # ── Coverage % desde Cobertura.xml ──
+        COVERAGE_FILE="${{ github.workspace }}/TestResults/merged/Cobertura.xml"
+        if [ -f "$COVERAGE_FILE" ]; then
+          LINE_RATE=$(grep -oP '(?<=line-rate=")[^"]+' "$COVERAGE_FILE" | head -1)
+          COVERAGE_PCT=$(echo "$LINE_RATE * 100" | bc -l | xargs printf "%.2f")
+        else
+          COVERAGE_PCT="N/A"
+        fi
+        echo "COVERAGE_PCT=${COVERAGE_PCT}" >> $GITHUB_ENV
+
+        # ── Total issues Roslyn ──
+        ROSLYN_FILE="${{ github.workspace }}/roslyn-report/format-report.json"
+        if [ -f "$ROSLYN_FILE" ]; then
+          ROSLYN_ISSUES=$(jq '[.[].FileChanges // [] | length] | add // 0' "$ROSLYN_FILE" 2>/dev/null || echo "0")
+        else
+          ROSLYN_ISSUES="N/A"
+        fi
+        echo "ROSLYN_ISSUES=${ROSLYN_ISSUES}" >> $GITHUB_ENV
+
+        # ── Líneas duplicadas desde jscpd ──
+        JSCPD_FILE="${{ github.workspace }}/jscpd-report/jscpd-report.json"
+        if [ -f "$JSCPD_FILE" ]; then
+          DUPLICATED_LINES=$(jq '.statistics.total.duplicatedLines // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+          DUPLICATE_PCT=$(jq '.statistics.total.percentage // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+        else
+          DUPLICATED_LINES="N/A"
+          DUPLICATE_PCT="N/A"
+        fi
+        echo "DUPLICATED_LINES=${DUPLICATED_LINES}" >> $GITHUB_ENV
+        echo "DUPLICATE_PCT=${DUPLICATE_PCT}" >> $GITHUB_ENV
+
     - name: PullRequestFeedback
       continue-on-error: true
       shell: bash
@@ -350,9 +386,16 @@ runs:
       run: |
         ENCODED_BRANCH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$BRANCH'))")
         URL="${GITOPS_URL}/sentinel/org/${ORGANIZATION_ID}/project/${PROJECT_ID}/application/${APPLICATION_ID}?branch=${ENCODED_BRANCH}"
+
         echo "## Análisis de Calidad Finalizado ✅" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "Puede ver los detalles en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
+        echo "| Métrica | Valor |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🧪 Cobertura de código | ${COVERAGE_PCT}% |" >> $GITHUB_STEP_SUMMARY
+        echo "| ⚠️ Issues (Roslyn) | ${ROSLYN_ISSUES} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 📋 Líneas duplicadas | ${DUPLICATED_LINES} (${DUPLICATE_PCT}%) |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Puede ver los detalles completos en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
 
     - name: Comment on PR
       if: github.event_name == 'pull_request'
@@ -363,6 +406,10 @@ runs:
         ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
         PROJECT_ID: ${{ env.PROJECT_ID }}
         APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        COVERAGE_PCT: ${{ env.COVERAGE_PCT }}
+        ROSLYN_ISSUES: ${{ env.ROSLYN_ISSUES }}
+        DUPLICATED_LINES: ${{ env.DUPLICATED_LINES }}
+        DUPLICATE_PCT: ${{ env.DUPLICATE_PCT }}
       with:
         github-token: ${{ inputs.github_token }}
         script: |
@@ -370,9 +417,19 @@ runs:
           const encodedBranch = encodeURIComponent(branch)
           const url = `${process.env.GITOPS_URL}/sentinel/org/${process.env.ORGANIZATION_ID}/project/${process.env.PROJECT_ID}/application/${process.env.APPLICATION_ID}?branch=${encodedBranch}`
 
+          const body = `## Análisis de Calidad Finalizado ✅
+
+          | Métrica | Valor |
+          |---------|-------|
+          | 🧪 Cobertura de código | ${process.env.COVERAGE_PCT}% |
+          | ⚠️ Issues (Roslyn) | ${process.env.ROSLYN_ISSUES} |
+          | 📋 Líneas duplicadas | ${process.env.DUPLICATED_LINES} (${process.env.DUPLICATE_PCT}%) |
+
+          Puede ver los detalles completos en [GitOps](${url})`
+
           await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: context.issue.number,
-            body: `## Análisis de Calidad Finalizado ✅\nPuede ver los detalles en [GitOps](${url})`
+            body
           })
