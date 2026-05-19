@@ -173,7 +173,7 @@ runs:
 
     - name: "Continuos Integration Golang"
       if: ${{ inputs.workflow == 'Go' }}
-      uses: infrastructure-services/continuos-integration@go
+      uses: infrastructure-services/continuos-integration@go-cicdv3-test
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
