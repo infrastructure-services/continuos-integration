@@ -116,6 +116,20 @@ runs:
           exit 1
         fi
 
+        # Aplicar valores por defecto si los IDs opcionales no se pudieron obtener
+        if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener projectId de Sentinel, usando valor por defecto: 0"
+          PROJECT_ID="0"
+        fi
+        if [ -z "$APPLICATION_ID" ] || [ "$APPLICATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener applicationId de Sentinel, usando valor por defecto: 0"
+          APPLICATION_ID="0"
+        fi
+        if [ -z "$ORGANIZATION_ID" ] || [ "$ORGANIZATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener organizationId de Sentinel, usando valor por defecto: 0"
+          ORGANIZATION_ID="0"
+        fi
+
         echo "SCAN_ID=${SCAN_ID}" >> $GITHUB_ENV
         echo "PROJECT_ID=${PROJECT_ID}" >> $GITHUB_ENV
         echo "APPLICATION_ID=${APPLICATION_ID}" >> $GITHUB_ENV
