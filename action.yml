@@ -340,6 +340,23 @@ runs:
     # ── Pull Request Feedback ─────────────────────────────────────────────────
     - name: PullRequestFeedback
       continue-on-error: true
+      shell: bash
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+      run: |
+        ENCODED_BRANCH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$BRANCH'))")
+        URL="${GITOPS_URL}/sentinel/org/${ORGANIZATION_ID}/project/${PROJECT_ID}/application/${APPLICATION_ID}?branch=${ENCODED_BRANCH}"
+        echo "## Análisis de Calidad Finalizado ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Puede ver los detalles en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
       uses: actions/github-script@v7
       env:
         GITOPS_URL: ${{ inputs.gitops_url }}
@@ -349,16 +366,13 @@ runs:
       with:
         github-token: ${{ inputs.github_token }}
         script: |
-          const branch = context.payload.pull_request?.head?.ref ?? context.ref.replace('refs/heads/', '')
+          const branch = context.payload.pull_request.head.ref
           const encodedBranch = encodeURIComponent(branch)
-
           const url = `${process.env.GITOPS_URL}/sentinel/org/${process.env.ORGANIZATION_ID}/project/${process.env.PROJECT_ID}/application/${process.env.APPLICATION_ID}?branch=${encodedBranch}`
 
-          const body = `Analisis de Calidad Finalizado. Puede ver los detalles en [GitOps](${url})`
-
-          await github.rest.repos.createCommitComment({
+          await github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            commit_sha: context.sha,
-            body
+            issue_number: context.issue.number,
+            body: `## Análisis de Calidad Finalizado ✅\nPuede ver los detalles en [GitOps](${url})`
           })
