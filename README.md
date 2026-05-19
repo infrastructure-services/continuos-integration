@@ -7,7 +7,8 @@ análisis de SonarQube por un pipeline de **sensores reportados a Sentinel**.
 ## Qué hace
 
 1. **Create Sentinel Scan** — crea un scan en Sentinel y obtiene `scanId`,
-   `projectId`, `applicationId` y `organizationId`.
+   `projectId`, `applicationId` y `organizationId`. Si Sentinel es inalcanzable,
+   el paso lo registra y el pipeline continúa igual.
 2. **Build & Test** — `go build ./...` y `go test ./... -coverprofile`.
 3. **Coverage** — convierte el perfil de cobertura de Go a formato Cobertura XML
    con [`gocover-cobertura`](https://github.com/boumenot/gocover-cobertura).
@@ -52,6 +53,15 @@ análisis de SonarQube por un pipeline de **sensores reportados a Sentinel**.
 
 ## Notas
 
+- **Sentinel es best-effort.** `Create Sentinel Scan` usa `--connect-timeout` +
+  `continue-on-error`: si el runner no llega a la API de Sentinel, loguea un
+  warning y el pipeline sigue (build/test/golangci-lint/cloc/jscpd corren igual);
+  solo se omiten los envíos a Sentinel (gateados con `if: env.SCAN_ID != ''`).
+  Para reportar a Sentinel, el runner debe poder resolver `sentinel_url` — es una
+  URL interna de Andreani, así que requiere un runner self-hosted en la red.
+- **`workdir_src` / `workdir_test`** deben apuntar al directorio del `go.mod`. El
+  default es `src/`; si el módulo está en la raíz del repo, el workflow que invoca
+  esta action debe pasar `workdir_src: ./` y `workdir_test: ./`.
 - `golangci-lint` está fijado en `v1.64.8` para mantener compatibilidad con los
   archivos `.golangci.yml` v1 de la flota de repos. Para migrar a la v2,
   actualizar `GOLANGCI_VERSION` en `action.yml` (la v2 cambia el esquema de
