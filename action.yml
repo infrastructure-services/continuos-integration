@@ -198,9 +198,8 @@ runs:
         reportgenerator \
           "-reports:${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" \
           "-targetdir:${{ github.workspace }}/TestResults/merged" \
-          "-reporttypes:Cobertura"
           "-reporttypes:Cobertura" \
-          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*;-*Entity;-*Event;-*Vm;-*Exception"
+          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*"
 
     - name: Send Coverage report to Sentinel
       continue-on-error: true
