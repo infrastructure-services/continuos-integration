@@ -1,1 +1,61 @@
-# continuos-integration
+# continuos-integration · go-cicdv3-test
+
+Composite Action de **CI/CD v3 para proyectos Go**. Es la contraparte de la rama
+[`cicdv3-net-8`](../../tree/cicdv3-net-8) (CI/CD v3 para .NET 8): reemplaza el
+análisis de SonarQube por un pipeline de **sensores reportados a Sentinel**.
+
+## Qué hace
+
+1. **Create Sentinel Scan** — crea un scan en Sentinel y obtiene `scanId`,
+   `projectId`, `applicationId` y `organizationId`.
+2. **Build & Test** — `go build ./...` y `go test ./... -coverprofile`.
+3. **Coverage** — convierte el perfil de cobertura de Go a formato Cobertura XML
+   con [`gocover-cobertura`](https://github.com/boumenot/gocover-cobertura).
+4. **Análisis estático** — ejecuta [`golangci-lint`](https://golangci-lint.run/)
+   con salida JSON.
+5. **Métricas de código** — `cloc` (conteo de líneas).
+6. **Código duplicado** — `jscpd` con tokenizer de Go.
+7. Cada reporte se envía a Sentinel; al final se publica un resumen en el
+   `STEP_SUMMARY` y un comentario en el PR.
+
+## Equivalencia con `cicdv3-net-8`
+
+| Herramienta .NET (cicdv3-net-8) | Equivalente Go (go-cicdv3-test) | Sensor Sentinel |
+|---------------------------------|---------------------------------|-----------------|
+| `dotnet test` + `reportgenerator` (Cobertura) | `go test -coverprofile` + `gocover-cobertura` | `go-cover` |
+| Roslyn Analyzers (`dotnet format analyzers`) | `golangci-lint` | `golangci-lint` |
+| `cloc` | `cloc` | `cloc` |
+| `jscpd` | `jscpd` | `jscpd` |
+| `setup_nuget.sh` (feeds NuGet) | `setup_goprivate.sh` (`GOPRIVATE` + git insteadOf) | — |
+| `send_to_sentinel.sh` | `send_to_sentinel.sh` (idéntico) | — |
+
+> Los sensores `go-cover` y `golangci-lint` deben existir en el backend de
+> Sentinel. Los pasos de envío usan `continue-on-error`, por lo que un sensor
+> no registrado no rompe el pipeline.
+
+## Inputs
+
+| Input | Requerido | Default | Descripción |
+|-------|-----------|---------|-------------|
+| `github_username` | sí | — | Usuario de GitHub para packages/módulos privados |
+| `github_token` | sí | — | Token con permiso de lectura de packages |
+| `workdir_src` | no | `src/` | Directorio del módulo Go |
+| `workdir_test` | no | `src/` | Directorio de los tests |
+| `go_version` | no | `stable` | Versión de Go a instalar |
+| `sonar_url` | sí | — | Retenido por compatibilidad — el análisis lo hace Sentinel |
+| `sonar_token` | sí | — | Retenido por compatibilidad |
+| `sonar_custom` | no | `""` | Retenido por compatibilidad |
+| `sonar_tags` | no | `""` | Retenido por compatibilidad |
+| `sentinel_url` | no | `https://sentinel-api-gitops-test...` | URL base de la API de Sentinel |
+| `sentinel_sensor_id` | no | `1` | ID de sensor (retenido para paridad con cicdv3-net-8) |
+| `gitops_url` | no | `https://ui-gitops-test...` | URL base de la UI de GitOps |
+
+## Notas
+
+- `golangci-lint` está fijado en `v1.64.8` para mantener compatibilidad con los
+  archivos `.golangci.yml` v1 de la flota de repos. Para migrar a la v2,
+  actualizar `GOLANGCI_VERSION` en `action.yml` (la v2 cambia el esquema de
+  configuración y el flag de salida).
+- Los inputs `sonar_*` se conservan para no romper a los workflows que ya
+  invocan esta action; el análisis de calidad ahora lo realiza Sentinel.
+- Rama de prueba (`-test`) — análoga a `react-cicdv3-test`.

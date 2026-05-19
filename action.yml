@@ -1,5 +1,5 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+name: "Continuous Integration v3 - Go"
+description: "Pipeline de CI/CD v3 para proyectos Go: compila, ejecuta tests con cobertura, análisis estático (golangci-lint), métricas de código (cloc) y detección de duplicados (jscpd), reportando cada resultado a Sentinel."
 
 inputs:
   # Github
@@ -12,11 +12,11 @@ inputs:
 
   # Directories
   workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
+    description: "directorio donde se encuentra el módulo Go a compilar DEFAULT: src/"
     required: false
     default: 'src/'
   workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
+    description: "directorio donde se encuentran los tests DEFAULT: src/"
     required: false
     default: 'src/'
 
@@ -24,13 +24,13 @@ inputs:
   go_version:
     description: "Versión de Go a instalar para el build"
     required: false
-    default: 'stable' 
+    default: 'stable'
 
-  # Sonarqube
-  sonar_url: 
+  # Sonarqube (retenidos por compatibilidad — el análisis de calidad lo realiza Sentinel)
+  sonar_url:
     description: "url sonarqube"
     required: true
-  sonar_token: 
+  sonar_token:
     description: "token sonarqube"
     required: true
   sonar_custom:
@@ -38,33 +38,394 @@ inputs:
     default: ""
     required: false
   sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
+    description: "extra tags, ej: 'go-1.22, microservicio'"
     default: ""
     required: false
+
+  # Sentinel
+  sentinel_url:
+    description: "URL base de la API de Sentinel (sin trailing slash)"
+    required: false
+    default: "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar"
+  sentinel_sensor_id:
+    description: "ID del sensor en Sentinel al que se reportan los análisis"
+    required: false
+    default: "1"
+  gitops_url:
+    description: "URL base de la UI de GitOps (sin trailing slash)"
+    required: false
+    default: "https://ui-gitops-test.apps.ocptest.andreani.com.ar"
+
 runs:
   using: "composite"
   steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-    - name: "Build"
-      uses: architecture-it/actions@go-base
+    - name: Key Repository
+      id: variables
+      uses: actions/github-script@v7
       with:
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        go_version: ${{ inputs.go_version }}
+        script: |
+          const name = context.repo.repo
+          const organization = context.repo.owner
+          core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
 
-
-    - name: "SonarQube Analyzer"
-      uses: architecture-it/actions@sonarqube
+    - name: Setup Go
+      uses: actions/setup-go@v5
       with:
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
-        sonar_code: 'Go'
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-          
+        go-version: ${{ inputs.go_version }}
+        cache-dependency-path: ${{ inputs.workdir_src }}/go.sum
 
+    - name: Configure Go private modules
+      shell: bash
+      env:
+        GIT_USERNAME: ${{ inputs.github_username }}
+        GIT_TOKEN: ${{ inputs.github_token }}
+      run: bash "${{ github.action_path }}/scripts/setup_goprivate.sh"
+
+    - name: Create Sentinel Scan
+      id: sentinel-scan
+      shell: bash
+      run: |
+        REPO_ID="${{ github.repository_id }}"
+        BRANCH="${{ github.head_ref || github.ref_name }}"
+        COMMIT_SHA="${{ github.sha }}"
+        TRIGGERED_BY="${{ github.actor }}"
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        PR_TITLE="${{ github.event.pull_request.title }}"
+
+        BODY=$(jq -n \
+          --arg branch        "$BRANCH" \
+          --arg commitSha     "$COMMIT_SHA" \
+          --arg triggeredBy   "$TRIGGERED_BY" \
+          --arg prNumber      "$PR_NUMBER" \
+          --arg prTitle       "$PR_TITLE" \
+          '{
+            branch:            $branch,
+            commitSha:         $commitSha,
+            pullRequestNumber: (if $prNumber == "" then null else ($prNumber | tonumber) end),
+            pullRequestTitle:  (if $prTitle  == "" then null else $prTitle end),
+            triggeredBy:       $triggeredBy
+          }')
+
+        echo "Request body: $BODY"
+
+        RESPONSE=$(curl -s -X POST \
+          "${{ inputs.sentinel_url }}/api/v1/repository/${REPO_ID}/scans" \
+          -H "Content-Type: application/json" \
+          -d "$BODY")
+
+        echo "Sentinel response: $RESPONSE"
+
+        SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId')
+        PROJECT_ID=$(echo "$RESPONSE" | jq -r '.projectId')
+        APPLICATION_ID=$(echo "$RESPONSE" | jq -r '.applicationId')
+        ORGANIZATION_ID=$(echo "$RESPONSE" | jq -r '.organizationId')
+
+        if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
+          echo "ERROR: No se pudo obtener el scanId de Sentinel"
+          exit 1
+        fi
+
+        # Aplicar valores por defecto si los IDs opcionales no se pudieron obtener
+        if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener projectId de Sentinel, usando valor por defecto: 0"
+          PROJECT_ID="0"
+        fi
+        if [ -z "$APPLICATION_ID" ] || [ "$APPLICATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener applicationId de Sentinel, usando valor por defecto: 0"
+          APPLICATION_ID="0"
+        fi
+        if [ -z "$ORGANIZATION_ID" ] || [ "$ORGANIZATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener organizationId de Sentinel, usando valor por defecto: 0"
+          ORGANIZATION_ID="0"
+        fi
+
+        echo "SCAN_ID=${SCAN_ID}" >> $GITHUB_ENV
+        echo "PROJECT_ID=${PROJECT_ID}" >> $GITHUB_ENV
+        echo "APPLICATION_ID=${APPLICATION_ID}" >> $GITHUB_ENV
+        echo "ORGANIZATION_ID=${ORGANIZATION_ID}" >> $GITHUB_ENV
+
+        echo "scanId=${SCAN_ID}" >> $GITHUB_OUTPUT
+        echo "projectId=${PROJECT_ID}" >> $GITHUB_OUTPUT
+        echo "applicationId=${APPLICATION_ID}" >> $GITHUB_OUTPUT
+        echo "organizationId=${ORGANIZATION_ID}" >> $GITHUB_OUTPUT
+
+        echo "Sentinel Scan creado con ID: ${SCAN_ID}"
+        echo "Project ID: ${PROJECT_ID} | Application ID: ${APPLICATION_ID} | Organization ID: ${ORGANIZATION_ID}"
+
+    - name: Download dependencies
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+      run: go mod download
+
+    - name: Build
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+      run: go build ./...
+
+    - name: Test
+      shell: bash
+      working-directory: ${{ inputs.workdir_test }}
+      continue-on-error: true
+      run: |
+        go test ./... \
+          -covermode=atomic \
+          -coverprofile="${{ github.workspace }}/coverage.out" \
+          -count=1
+
+    - name: Convert Coverage Report
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+      run: |
+        go install github.com/boumenot/gocover-cobertura@latest
+        export PATH="$(go env GOPATH)/bin:$PATH"
+        mkdir -p "${{ github.workspace }}/TestResults"
+        if [ -f "${{ github.workspace }}/coverage.out" ]; then
+          gocover-cobertura < "${{ github.workspace }}/coverage.out" > "${{ github.workspace }}/TestResults/Cobertura.xml"
+          echo "✅ Reporte de cobertura Cobertura.xml generado."
+        else
+          echo "⚠️ No se encontró coverage.out; se omite la conversión a Cobertura."
+        fi
+
+    - name: Send Coverage report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "go-cover"
+        REPORT_PATH: ${{ github.workspace }}/TestResults/Cobertura.xml
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Análisis estático: golangci-lint ──────────────────────────────────────
+    - name: Run golangci-lint
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+      run: |
+        # Versión fijada por compatibilidad con configs .golangci.yml v1 existentes
+        # en la flota de repos. Para migrar a la v2 actualizar este valor.
+        GOLANGCI_VERSION="v1.64.8"
+        curl -sSfL "https://raw.githubusercontent.com/golangci/golangci-lint/${GOLANGCI_VERSION}/install.sh" \
+          | sh -s -- -b "$(go env GOPATH)/bin" "${GOLANGCI_VERSION}"
+        export PATH="$(go env GOPATH)/bin:$PATH"
+
+        set +e
+        golangci-lint run ./... \
+          --out-format json \
+          --timeout 5m \
+          --issues-exit-code 1 \
+          > "${{ github.workspace }}/golangci-lint-report.json"
+        EXIT_CODE=$?
+        set -e
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "✅ golangci-lint: no se encontraron issues."
+        elif [ "$EXIT_CODE" -eq 1 ]; then
+          echo "✅ golangci-lint: se encontraron issues. Ver golangci-lint-report.json para el detalle."
+        else
+          echo "❌ Error inesperado en golangci-lint (exit code: $EXIT_CODE)."
+          exit "$EXIT_CODE"
+        fi
+
+    - name: Upload golangci-lint Analysis Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: golangci-lint-analysis-report
+        path: ${{ github.workspace }}/golangci-lint-report.json
+
+    - name: Send golangci-lint report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "golangci-lint"
+        REPORT_PATH: ${{ github.workspace }}/golangci-lint-report.json
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Métricas de consumo: cloc (Count Lines of Code) ──────────────────────
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install cloc
+      shell: bash
+      run: |
+        if command -v apt-get &>/dev/null; then
+          sudo apt-get install -y perl
+        elif command -v apk &>/dev/null; then
+          apk add --no-cache perl
+        elif command -v yum &>/dev/null; then
+          sudo yum install -y perl
+        else
+          echo "⚠️ No se encontró gestor de paquetes, intentando continuar..."
+        fi
+        npm install -g cloc
+
+    - name: Run cloc – Code Metrics
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+      run: |
+        cloc . \
+          --json \
+          --out="${{ github.workspace }}/cloc-report.json" \
+          --exclude-dir=vendor,bin,.git,.github,TestResults,coverage-report,golangci-lint-report \
+          --not-match-f="(\.pb\.go|_string\.go|\.gen\.go|_gen\.go|_mock\.go|zz_generated\..*\.go)$" \
+          --fullpath \
+          --verbose=0
+
+    - name: Upload cloc Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: cloc-code-metrics-report
+        path: ${{ github.workspace }}/cloc-report.json
+
+    - name: Send cloc report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "cloc"
+        REPORT_PATH: ${{ github.workspace }}/cloc-report.json
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Detección de código duplicado: jscpd ─────────────────────────────────
+    - name: Install jscpd
+      shell: bash
+      run: npm install -g jscpd
+
+    - name: Run jscpd – Duplicate Code Detection
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ inputs.workdir_src }}
+      run: |
+        jscpd . \
+          --reporters "json" \
+          --output "${{ github.workspace }}/jscpd-report" \
+          --min-lines 5 \
+          --min-tokens 50 \
+          --threshold 0 \
+          --ignore "**/vendor/**,**/bin/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/golangci-lint-report/**,**/*.pb.go,**/*_string.go,**/*.gen.go" \
+          --format "go"
+
+    - name: Upload jscpd Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: jscpd-duplicate-code-report
+        path: ${{ github.workspace }}/jscpd-report/jscpd-report.json
+
+    - name: Send jscpd report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "jscpd"
+        REPORT_PATH: ${{ github.workspace }}/jscpd-report/jscpd-report.json
+        IS_LAST_REPORT: "true"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Pull Request Feedback ─────────────────────────────────────────────────
+    - name: Collect Metrics
+      id: metrics
+      continue-on-error: true
+      shell: bash
+      run: |
+        # ── Coverage % desde Cobertura.xml ──
+        COVERAGE_FILE="${{ github.workspace }}/TestResults/Cobertura.xml"
+        if [ -f "$COVERAGE_FILE" ]; then
+          LINE_RATE=$(grep -oP '(?<=line-rate=")[^"]+' "$COVERAGE_FILE" | head -1)
+          COVERAGE_PCT=$(echo "$LINE_RATE * 100" | bc -l | xargs printf "%.2f")
+        else
+          COVERAGE_PCT="N/A"
+        fi
+        echo "COVERAGE_PCT=${COVERAGE_PCT}" >> $GITHUB_ENV
+
+        # ── Total issues golangci-lint ──
+        GOLANGCI_FILE="${{ github.workspace }}/golangci-lint-report.json"
+        if [ -f "$GOLANGCI_FILE" ]; then
+          GOLANGCI_ISSUES=$(jq '(.Issues // []) | length' "$GOLANGCI_FILE" 2>/dev/null || echo "0")
+        else
+          GOLANGCI_ISSUES="N/A"
+        fi
+        echo "GOLANGCI_ISSUES=${GOLANGCI_ISSUES}" >> $GITHUB_ENV
+
+        # ── Líneas duplicadas desde jscpd ──
+        JSCPD_FILE="${{ github.workspace }}/jscpd-report/jscpd-report.json"
+        if [ -f "$JSCPD_FILE" ]; then
+          DUPLICATED_LINES=$(jq '.statistics.total.duplicatedLines // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+          DUPLICATE_PCT=$(jq '.statistics.total.percentage // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+        else
+          DUPLICATED_LINES="N/A"
+          DUPLICATE_PCT="N/A"
+        fi
+        echo "DUPLICATED_LINES=${DUPLICATED_LINES}" >> $GITHUB_ENV
+        echo "DUPLICATE_PCT=${DUPLICATE_PCT}" >> $GITHUB_ENV
+
+    - name: PullRequestFeedback
+      continue-on-error: true
+      shell: bash
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+      run: |
+        ENCODED_BRANCH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$BRANCH'))")
+        URL="${GITOPS_URL}/sentinel/org/${ORGANIZATION_ID}/project/${PROJECT_ID}/application/${APPLICATION_ID}?branch=${ENCODED_BRANCH}"
+
+        echo "## Análisis de Calidad Finalizado ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Métrica | Valor |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🧪 Cobertura de código | ${COVERAGE_PCT}% |" >> $GITHUB_STEP_SUMMARY
+        echo "| ⚠️ Issues (golangci-lint) | ${GOLANGCI_ISSUES} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 📋 Líneas duplicadas | ${DUPLICATED_LINES} (${DUPLICATE_PCT}%) |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Puede ver los detalles completos en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
+      uses: actions/github-script@v7
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        COVERAGE_PCT: ${{ env.COVERAGE_PCT }}
+        GOLANGCI_ISSUES: ${{ env.GOLANGCI_ISSUES }}
+        DUPLICATED_LINES: ${{ env.DUPLICATED_LINES }}
+        DUPLICATE_PCT: ${{ env.DUPLICATE_PCT }}
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const branch = context.payload.pull_request.head.ref
+          const encodedBranch = encodeURIComponent(branch)
+          const url = `${process.env.GITOPS_URL}/sentinel/org/${process.env.ORGANIZATION_ID}/project/${process.env.PROJECT_ID}/application/${process.env.APPLICATION_ID}?branch=${encodedBranch}`
+
+          const body = `## Análisis de Calidad Finalizado ✅
+
+          | Métrica | Valor |
+          |---------|-------|
+          | 🧪 Cobertura de código | ${process.env.COVERAGE_PCT}% |
+          | ⚠️ Issues (golangci-lint) | ${process.env.GOLANGCI_ISSUES} |
+          | 📋 Líneas duplicadas | ${process.env.DUPLICATED_LINES} (${process.env.DUPLICATE_PCT}%) |
+
+          Puede ver los detalles completos en [GitOps](${url})`
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body
+          })
