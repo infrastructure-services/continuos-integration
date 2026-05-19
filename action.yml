@@ -186,7 +186,7 @@ runs:
       env:
         ASPNETCORE_ENVIRONMENT: Development
       shell: bash
-      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors[...]
+      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       working-directory: ${{ inputs.workdir_test }}
       continue-on-error: true
 
@@ -198,8 +198,9 @@ runs:
         reportgenerator \
           "-reports:${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" \
           "-targetdir:${{ github.workspace }}/TestResults/merged" \
+          "-reporttypes:Cobertura"
           "-reporttypes:Cobertura" \
-          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations[...]
+          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*;-*Entity;-*Event;-*Vm;-*Exception"
 
     - name: Send Coverage report to Sentinel
       continue-on-error: true
