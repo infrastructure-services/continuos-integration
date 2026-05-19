@@ -39,6 +39,10 @@ inputs:
     description: "ID del sensor en Sentinel al que se reportan los análisis"
     required: false
     default: "1"
+  gitops_url:
+    description: "URL base de la UI de GitOps (sin trailing slash)"
+    required: false
+    default: "https://ui-gitops-test.apps.ocptest.andreani.com.ar"
 
 runs:
   using: "composite"
@@ -318,3 +322,29 @@ runs:
         REPORT_PATH: ${{ github.workspace }}/jscpd-report/jscpd-report.json
         IS_LAST_REPORT: "true"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Pull Request Feedback ─────────────────────────────────────────────────
+    - name: PullRequestFeedback
+      continue-on-error: true
+      uses: actions/github-script@v7
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const branch = context.payload.pull_request?.head?.ref ?? context.ref.replace('refs/heads/', '')
+          const encodedBranch = encodeURIComponent(branch)
+
+          const url = `${process.env.GITOPS_URL}/sentinel/org/${process.env.ORGANIZATION_ID}/project/${process.env.PROJECT_ID}/application/${process.env.APPLICATION_ID}?branch=${encodedBranch}`
+
+          const body = `Analisis de Calidad Finalizado. Puede ver los detalles en [GitOps](${url})`
+
+          await github.rest.repos.createCommitComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            commit_sha: context.sha,
+            body
+          })
