@@ -94,6 +94,14 @@ Para apuntar el orquestador a esta branch, alguien debe editar
    correspondiente — no instalar `pytest@latest` en CI.
 9. **Inputs `sonar_*` retenidos vestigiales**: Sentinel reemplaza a SonarQube;
    los inputs siguen existiendo para no romper el contrato con el orquestador.
+10. **Fallback de Python EOL**: el orquestador `v3-test` tiene `version: '3.8'`
+    como default. Python 3.8 está EOL desde octubre 2024 y
+    `actions/setup-python@v5` no lo encuentra en runners con Ubuntu reciente.
+    Para no romper a downstreams que dependen de ese default, el composite usa
+    el patrón `setup-py-primary (continue-on-error) + fallback a '3.x'`:
+    primero intenta la versión solicitada, y si falla cae a la última 3.x
+    disponible emitiendo un `::warning::`. Para fijar la versión real, override
+    `version` en el workflow caller o subí el default en `v3-test`.
 
 ## Scripts
 

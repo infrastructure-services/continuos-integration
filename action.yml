@@ -90,13 +90,37 @@ runs:
           const organization = context.repo.owner
           core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
 
-    - name: Setup Python
+    - name: Setup Python (requested version)
+      id: setup-py-primary
       uses: actions/setup-python@v5
+      continue-on-error: true
       with:
         python-version: ${{ inputs.version }}
         # No usar cache-dependency-path con paths que contengan './': @actions/glob
         # rechaza "Relative pathing '.' and '..' is not allowed". Dejamos auto-detect
         # del lockfile / requirements en la raíz del repo.
+
+    - name: Setup Python (fallback to latest 3.x)
+      # Si el runner no tiene la versión solicitada (típicamente porque está EOL —
+      # ej: 3.8 quedó EOL en oct 2024 y `actions/python-versions` ya no la lista
+      # para Ubuntu reciente), caemos a la última 3.x disponible. Esto mantiene
+      # el pipeline funcional cuando el orquestador `v3-test` pasa un default
+      # viejo (`version: '3.8'`) sin obligar a tocar workflows downstream.
+      if: steps.setup-py-primary.outcome == 'failure'
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Report Python version
+      shell: bash
+      run: |
+        INSTALLED=$(python --version 2>&1)
+        REQUESTED="${{ inputs.version }}"
+        if [ "${{ steps.setup-py-primary.outcome }}" = "failure" ]; then
+          echo "::warning::Versión Python solicitada '${REQUESTED}' no disponible en el runner. Se utilizó fallback a la última 3.x (${INSTALLED}). Para evitar este warning, actualizá el default de 'version' en infrastructure-services/continuos-integration@v3-test, o pasá 'version' explícita desde el workflow caller."
+        else
+          echo "✅ Python ${INSTALLED} instalado (versión solicitada: ${REQUESTED})."
+        fi
 
     - name: Configure Python private packages
       shell: bash
