@@ -439,7 +439,13 @@ runs:
         path: ${{ github.workspace }}/jscpd-report/jscpd-report.json
 
     - name: Send jscpd report to Sentinel
-      continue-on-error: true
+      # ÚLTIMO send: marca IS_LAST_REPORT=true, lo que indica a Sentinel que
+      # cierre el scan. NO usa continue-on-error: si este falla, el scan queda
+      # PENDING permanente en la DB (síntoma observado en corridas anteriores).
+      # Es mejor que el job termine rojo y se vea claro que algo quedó mal,
+      # antes que dejar scans huérfanos silenciosamente. Los sends anteriores
+      # SÍ son continue-on-error para tolerar blips transitorios individuales.
+      # Si send_to_sentinel.sh devuelve HTTP 2xx, exit 0 (incluso ante warnings).
       shell: bash
       env:
         SENTINEL_URL: ${{ inputs.sentinel_url }}

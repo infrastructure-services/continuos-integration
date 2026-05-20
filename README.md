@@ -17,10 +17,17 @@ vía sus "sensores". No delega en sub-actions externas — el composite tiene lo
 | `jscpd`         | `jscpd` (`--format python`) | `jscpd-report/jscpd-report.json`     |
 
 El `Create Sentinel Scan` es **bloqueante**: si no devuelve `scanId`, el job
-falla (`exit 1`). Los 4 `Send X to Sentinel` son `continue-on-error: true` para
-tolerar blips transitorios en un sensor individual sin frenar el resto del
-análisis. El último envío (`jscpd`) marca `IS_LAST_REPORT=true` para cerrar el
-scan en Sentinel.
+falla (`exit 1`).
+
+Los 3 primeros `Send X to Sentinel` (coverage, ruff, cloc) son
+`continue-on-error: true`: toleran blips transitorios en un sensor individual
+sin frenar el resto del análisis.
+
+**El último send (`jscpd`, con `IS_LAST_REPORT=true`) NO es
+`continue-on-error`**: si falla, el scan no se cierra y queda PENDING
+permanente en la DB. `send_to_sentinel.sh` distingue por la env var
+`IS_LAST_REPORT`: si es `true` y HTTP no es 2xx, exit 1 (job rojo). Mejor que
+el problema se vea claro antes que dejar scans huérfanos silenciosamente.
 
 ## Inputs
 
@@ -125,12 +132,24 @@ Para apuntar el orquestador a esta branch, alguien debe editar
     el nuevo gana en `sys.path`. Trade-off: dos versiones coexisten en disco
     (mayor footprint), pero el runtime usa la nueva. Para evitarlo: usar
     venv o pre-popular el tool-cache del runner.
+12. **Último send fail-hard para evitar scans huérfanos**: corridas
+    anteriores dejaban scans en estado `PENDING` permanente en la DB de
+    Sentinel. Causa: los 4 `Send X to Sentinel` eran `continue-on-error: true`
+    — si el último (jscpd, con `IS_LAST_REPORT=true`) fallaba o no llegaba a
+    ejecutarse porque un step previo abortó, Sentinel nunca recibía el flag
+    de cierre. Fix: el step `Send jscpd report to Sentinel` ya NO tiene
+    `continue-on-error`, y `send_to_sentinel.sh` mira la env var
+    `IS_LAST_REPORT`: si es `true` y HTTP no es 2xx, exit 1. Los sends
+    intermedios (coverage, ruff, cloc) siguen siendo best-effort.
 
 ## Scripts
 
 - `scripts/send_to_sentinel.sh` — POST multipart del reporte al endpoint
-  `/api/v1/scans/{SCAN_ID}/sensors/{SENSOR_ID}/report`. Tech-agnostic; mismo
-  contenido que en `cicdv3-net-8`.
+  `/api/v1/scans/{SCAN_ID}/sensors/{SENSOR_ID}/report`. Derivado de
+  `cicdv3-net-8` (mismo body de request) con un cambio: si la env var
+  `IS_LAST_REPORT=true` y HTTP no es 2xx, exit 1 (fail-hard para evitar scans
+  PENDING huérfanos). Los sends intermedios siguen siendo best-effort (exit 0
+  ante warnings).
 - `scripts/setup_pypriv.sh` — Configura acceso a paquetes Python privados de
   GitHub: `git config insteadOf` (cubre `pip install git+https://...`) +
   `~/.netrc` (cubre herramientas que invocan HTTPS directamente). Tolera la
