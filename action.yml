@@ -1,5 +1,5 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+name: "Continuous Integration v3 - Python"
+description: "Pipeline de CI/CD v3 para proyectos Python: instala dependencias, ejecuta tests con cobertura (pytest + pytest-cov), análisis estático (ruff), métricas de código (cloc) y detección de duplicados (jscpd), reportando cada resultado a Sentinel."
 
 inputs:
   # Github
@@ -12,19 +12,43 @@ inputs:
 
   # Directories
   workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
+    description: "directorio donde se encuentra el proyecto Python a analizar DEFAULT: ./"
     required: false
-    default: './'
+    default: '.'
   workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
+    description: "directorio donde se encuentran los tests DEFAULT: ./"
     required: false
-    default: './'
+    default: '.'
 
-  # Sonarqube
-  sonar_url: 
+  # Build
+  version:
+    description: "Versión de Python a instalar para el build (ej: '3.11')"
+    required: false
+    default: '3.11'
+  skip_test:
+    description: "permite skipear los procesos de testing"
+    required: false
+    default: 'false'
+
+  # Tooling (pin versions for reproducibility)
+  pytest_version:
+    description: "Versión de pytest a instalar"
+    required: false
+    default: '8.3.4'
+  pytest_cov_version:
+    description: "Versión de pytest-cov a instalar"
+    required: false
+    default: '6.0.0'
+  ruff_version:
+    description: "Versión de ruff a instalar"
+    required: false
+    default: '0.8.4'
+
+  # Sonarqube (retenidos por compatibilidad — el análisis de calidad lo realiza Sentinel)
+  sonar_url:
     description: "url sonarqube"
     required: true
-  sonar_token: 
+  sonar_token:
     description: "token sonarqube"
     required: true
   sonar_custom:
@@ -32,41 +56,411 @@ inputs:
     default: ""
     required: false
   sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
+    description: "extra tags, ej: 'python-3.11, microservicio'"
     default: ""
     required: false
-    
-  #python
-  version:
-    description: "Versión de Python, ej. 3.7, 3.8..."
-    required: true
-  skip_test:
-    description: "permite skipear los procesos de testing"
+
+  # Sentinel
+  sentinel_url:
+    description: "URL base de la API de Sentinel (sin trailing slash)"
     required: false
-    default: 'false'
+    default: "https://sentinel-api-gitops-test.apps.ocptest.andreani.com.ar"
+  sentinel_sensor_id:
+    description: "ID del sensor en Sentinel al que se reportan los análisis"
+    required: false
+    default: "1"
+  gitops_url:
+    description: "URL base de la UI de GitOps (sin trailing slash)"
+    required: false
+    default: "https://ui-gitops-test.apps.ocptest.andreani.com.ar"
+
 runs:
   using: "composite"
   steps:
-      - name: "Build"
-        uses: architecture-it/actions@python-base
-        with:
-          workdir_test: ${{ inputs.workdir_test }}
-          version: ${{ inputs.version }}
-          skip_test: ${{ inputs.skip_test }}
-          github_token: ${{ inputs.github_token }}
-          github_username: ${{ inputs.github_username }}
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-      - name: "SonarQube Analyzer"
-        uses: architecture-it/actions@sonarqube
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Python'
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          version: ${{ inputs.version }}
-          skip_test: ${{ inputs.skip_test }}
-          
+    - name: Key Repository
+      id: variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const name = context.repo.repo
+          const organization = context.repo.owner
+          core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
 
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.version }}
+        # No usar cache-dependency-path con paths que contengan './': @actions/glob
+        # rechaza "Relative pathing '.' and '..' is not allowed". Dejamos auto-detect
+        # del lockfile / requirements en la raíz del repo.
+
+    - name: Configure Python private packages
+      shell: bash
+      env:
+        GIT_USERNAME: ${{ inputs.github_username }}
+        GIT_TOKEN: ${{ inputs.github_token }}
+      run: bash "${{ github.action_path }}/scripts/setup_pypriv.sh"
+
+    - name: Create Sentinel Scan
+      id: sentinel-scan
+      shell: bash
+      run: |
+        REPO_ID="${{ github.repository_id }}"
+        BRANCH="${{ github.head_ref || github.ref_name }}"
+        COMMIT_SHA="${{ github.sha }}"
+        TRIGGERED_BY="${{ github.actor }}"
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        PR_TITLE="${{ github.event.pull_request.title }}"
+
+        BODY=$(jq -n \
+          --arg branch        "$BRANCH" \
+          --arg commitSha     "$COMMIT_SHA" \
+          --arg triggeredBy   "$TRIGGERED_BY" \
+          --arg prNumber      "$PR_NUMBER" \
+          --arg prTitle       "$PR_TITLE" \
+          '{
+            branch:            $branch,
+            commitSha:         $commitSha,
+            pullRequestNumber: (if $prNumber == "" then null else ($prNumber | tonumber) end),
+            pullRequestTitle:  (if $prTitle  == "" then null else $prTitle end),
+            triggeredBy:       $triggeredBy
+          }')
+
+        echo "Request body: $BODY"
+
+        RESPONSE=$(curl -sS -X POST \
+          "${{ inputs.sentinel_url }}/api/v1/repository/${REPO_ID}/scans" \
+          -H "Content-Type: application/json" \
+          --connect-timeout 30 \
+          --max-time 120 \
+          -d "$BODY")
+
+        echo "Sentinel response: $RESPONSE"
+
+        SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId')
+        PROJECT_ID=$(echo "$RESPONSE" | jq -r '.projectId')
+        APPLICATION_ID=$(echo "$RESPONSE" | jq -r '.applicationId')
+        ORGANIZATION_ID=$(echo "$RESPONSE" | jq -r '.organizationId')
+
+        if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
+          echo "❌ ERROR: No se pudo obtener el scanId de Sentinel — el reporte a Sentinel es bloqueante."
+          exit 1
+        fi
+
+        # Defaults para los IDs opcionales (se usan en las URLs de feedback).
+        if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener projectId de Sentinel, usando valor por defecto: 0"
+          PROJECT_ID="0"
+        fi
+        if [ -z "$APPLICATION_ID" ] || [ "$APPLICATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener applicationId de Sentinel, usando valor por defecto: 0"
+          APPLICATION_ID="0"
+        fi
+        if [ -z "$ORGANIZATION_ID" ] || [ "$ORGANIZATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener organizationId de Sentinel, usando valor por defecto: 0"
+          ORGANIZATION_ID="0"
+        fi
+
+        echo "SCAN_ID=${SCAN_ID}" >> $GITHUB_ENV
+        echo "PROJECT_ID=${PROJECT_ID}" >> $GITHUB_ENV
+        echo "APPLICATION_ID=${APPLICATION_ID}" >> $GITHUB_ENV
+        echo "ORGANIZATION_ID=${ORGANIZATION_ID}" >> $GITHUB_ENV
+
+        echo "scanId=${SCAN_ID}" >> $GITHUB_OUTPUT
+        echo "projectId=${PROJECT_ID}" >> $GITHUB_OUTPUT
+        echo "applicationId=${APPLICATION_ID}" >> $GITHUB_OUTPUT
+        echo "organizationId=${ORGANIZATION_ID}" >> $GITHUB_OUTPUT
+
+        echo "✅ Sentinel Scan creado con ID: ${SCAN_ID}"
+        echo "Project ID: ${PROJECT_ID} | Application ID: ${APPLICATION_ID} | Organization ID: ${ORGANIZATION_ID}"
+
+    - name: Install build tooling
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        # Tooling de análisis fijado a versión para reproducibilidad.
+        python -m pip install \
+          "pytest==${{ inputs.pytest_version }}" \
+          "pytest-cov==${{ inputs.pytest_cov_version }}" \
+          "ruff==${{ inputs.ruff_version }}"
+
+    - name: Install project dependencies
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.workdir_src }}
+      run: |
+        # Estrategia de instalación, en orden de precedencia (compatible con la
+        # mayoría de repos Python del monorepo):
+        #   1. requirements.txt        — proyectos pip clásicos
+        #   2. requirements-dev.txt    — extras para tests/lint si existe
+        #   3. pyproject.toml          — instala el paquete editable (incluye deps)
+        if [ -f requirements.txt ]; then
+          echo "ℹ️  Instalando dependencias desde requirements.txt"
+          python -m pip install -r requirements.txt
+        fi
+        if [ -f requirements-dev.txt ]; then
+          echo "ℹ️  Instalando dependencias desde requirements-dev.txt"
+          python -m pip install -r requirements-dev.txt
+        fi
+        if [ -f pyproject.toml ]; then
+          echo "ℹ️  Instalando paquete desde pyproject.toml (editable)"
+          python -m pip install -e . || python -m pip install .
+        fi
+
+    - name: Test
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.workdir_test }}
+      continue-on-error: true
+      if: ${{ inputs.skip_test != 'true' }}
+      run: |
+        mkdir -p "${{ github.workspace }}/TestResults"
+        # pytest-cov genera Cobertura XML directamente, sin paso de conversión.
+        # --cov=. cubre todo el directorio actual; --cov-branch añade branch coverage.
+        pytest \
+          --cov=. \
+          --cov-branch \
+          --cov-report=xml:"${{ github.workspace }}/TestResults/Cobertura.xml" \
+          --junitxml="${{ github.workspace }}/TestResults/junit.xml" || true
+
+    - name: Send Coverage report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "python-cover"
+        REPORT_PATH: ${{ github.workspace }}/TestResults/Cobertura.xml
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Análisis estático: ruff ──────────────────────────────────────────────
+    - name: Run ruff
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.workdir_src }}
+      run: |
+        # ruff exit codes:
+        #   0 = sin issues
+        #   1 = se encontraron issues (esperado, no es error del pipeline)
+        #   2 = error de configuración / argumentos
+        set +e
+        ruff check . \
+          --output-format=json \
+          --output-file="${{ github.workspace }}/ruff-report.json"
+        EXIT_CODE=$?
+        set -e
+
+        if [ "$EXIT_CODE" -eq 0 ]; then
+          echo "✅ ruff: no se encontraron issues."
+          # ruff no escribe el archivo cuando no hay issues; generar array vacío.
+          if [ ! -f "${{ github.workspace }}/ruff-report.json" ]; then
+            echo "[]" > "${{ github.workspace }}/ruff-report.json"
+          fi
+        elif [ "$EXIT_CODE" -eq 1 ]; then
+          echo "✅ ruff: se encontraron issues. Ver ruff-report.json para el detalle."
+        else
+          echo "❌ Error inesperado en ruff (exit code: $EXIT_CODE)."
+          exit "$EXIT_CODE"
+        fi
+
+    - name: Upload ruff Analysis Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: ruff-analysis-report
+        path: ${{ github.workspace }}/ruff-report.json
+
+    - name: Send ruff report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "ruff"
+        REPORT_PATH: ${{ github.workspace }}/ruff-report.json
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Métricas de consumo: cloc (Count Lines of Code) ──────────────────────
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install cloc
+      shell: bash
+      run: |
+        if command -v apt-get &>/dev/null; then
+          sudo apt-get install -y perl
+        elif command -v apk &>/dev/null; then
+          apk add --no-cache perl
+        elif command -v yum &>/dev/null; then
+          sudo yum install -y perl
+        else
+          echo "⚠️ No se encontró gestor de paquetes, intentando continuar..."
+        fi
+        npm install -g cloc
+
+    - name: Run cloc – Code Metrics
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.workdir_src }}
+      run: |
+        cloc . \
+          --json \
+          --out="${{ github.workspace }}/cloc-report.json" \
+          --exclude-dir=__pycache__,.venv,venv,env,.git,.github,.pytest_cache,.mypy_cache,.ruff_cache,.tox,build,dist,TestResults,coverage-report,ruff-report \
+          --not-match-f="(\.pyc|\.pyo|\.egg-info)$" \
+          --fullpath \
+          --verbose=0
+
+    - name: Upload cloc Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: cloc-code-metrics-report
+        path: ${{ github.workspace }}/cloc-report.json
+
+    - name: Send cloc report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "cloc"
+        REPORT_PATH: ${{ github.workspace }}/cloc-report.json
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Detección de código duplicado: jscpd ─────────────────────────────────
+    - name: Install jscpd
+      shell: bash
+      run: npm install -g jscpd
+
+    - name: Run jscpd – Duplicate Code Detection
+      continue-on-error: true
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.workdir_src }}
+      run: |
+        jscpd . \
+          --reporters "json" \
+          --output "${{ github.workspace }}/jscpd-report" \
+          --min-lines 5 \
+          --min-tokens 50 \
+          --threshold 0 \
+          --ignore "**/__pycache__/**,**/.venv/**,**/venv/**,**/env/**,**/.git/**,**/.github/**,**/.pytest_cache/**,**/.mypy_cache/**,**/.ruff_cache/**,**/.tox/**,**/build/**,**/dist/**,**/TestResults/**,**/coverage-report/**,**/*.egg-info/**" \
+          --format "python"
+
+    - name: Upload jscpd Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: jscpd-duplicate-code-report
+        path: ${{ github.workspace }}/jscpd-report/jscpd-report.json
+
+    - name: Send jscpd report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "jscpd"
+        REPORT_PATH: ${{ github.workspace }}/jscpd-report/jscpd-report.json
+        IS_LAST_REPORT: "true"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Pull Request Feedback ─────────────────────────────────────────────────
+    - name: Collect Metrics
+      id: metrics
+      continue-on-error: true
+      shell: bash
+      run: |
+        # ── Coverage % desde Cobertura.xml ──
+        COVERAGE_FILE="${{ github.workspace }}/TestResults/Cobertura.xml"
+        if [ -f "$COVERAGE_FILE" ]; then
+          LINE_RATE=$(grep -oP '(?<=line-rate=")[^"]+' "$COVERAGE_FILE" | head -1)
+          COVERAGE_PCT=$(echo "$LINE_RATE * 100" | bc -l | xargs printf "%.2f")
+        else
+          COVERAGE_PCT="N/A"
+        fi
+        echo "COVERAGE_PCT=${COVERAGE_PCT}" >> $GITHUB_ENV
+
+        # ── Total issues ruff ──
+        # ruff JSON es un array plano de objetos { code, message, location, ... }
+        RUFF_FILE="${{ github.workspace }}/ruff-report.json"
+        if [ -f "$RUFF_FILE" ]; then
+          RUFF_ISSUES=$(jq 'length' "$RUFF_FILE" 2>/dev/null || echo "0")
+        else
+          RUFF_ISSUES="N/A"
+        fi
+        echo "RUFF_ISSUES=${RUFF_ISSUES}" >> $GITHUB_ENV
+
+        # ── Líneas duplicadas desde jscpd ──
+        JSCPD_FILE="${{ github.workspace }}/jscpd-report/jscpd-report.json"
+        if [ -f "$JSCPD_FILE" ]; then
+          DUPLICATED_LINES=$(jq '.statistics.total.duplicatedLines // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+          DUPLICATE_PCT=$(jq '.statistics.total.percentage // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+        else
+          DUPLICATED_LINES="N/A"
+          DUPLICATE_PCT="N/A"
+        fi
+        echo "DUPLICATED_LINES=${DUPLICATED_LINES}" >> $GITHUB_ENV
+        echo "DUPLICATE_PCT=${DUPLICATE_PCT}" >> $GITHUB_ENV
+
+    - name: PullRequestFeedback
+      continue-on-error: true
+      shell: bash
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+      run: |
+        ENCODED_BRANCH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$BRANCH'))")
+        URL="${GITOPS_URL}/sentinel/org/${ORGANIZATION_ID}/project/${PROJECT_ID}/application/${APPLICATION_ID}?branch=${ENCODED_BRANCH}"
+
+        echo "## Análisis de Calidad Finalizado ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Métrica | Valor |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🧪 Cobertura de código | ${COVERAGE_PCT}% |" >> $GITHUB_STEP_SUMMARY
+        echo "| ⚠️ Issues (ruff) | ${RUFF_ISSUES} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 📋 Líneas duplicadas | ${DUPLICATED_LINES} (${DUPLICATE_PCT}%) |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Puede ver los detalles completos en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
+      uses: actions/github-script@v7
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        COVERAGE_PCT: ${{ env.COVERAGE_PCT }}
+        RUFF_ISSUES: ${{ env.RUFF_ISSUES }}
+        DUPLICATED_LINES: ${{ env.DUPLICATED_LINES }}
+        DUPLICATE_PCT: ${{ env.DUPLICATE_PCT }}
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const branch = context.payload.pull_request.head.ref
+          const encodedBranch = encodeURIComponent(branch)
+          const url = `${process.env.GITOPS_URL}/sentinel/org/${process.env.ORGANIZATION_ID}/project/${process.env.PROJECT_ID}/application/${process.env.APPLICATION_ID}?branch=${encodedBranch}`
+
+          const body = `## Análisis de Calidad Finalizado ✅
+
+          | Métrica | Valor |
+          |---------|-------|
+          | 🧪 Cobertura de código | ${process.env.COVERAGE_PCT}% |
+          | ⚠️ Issues (ruff) | ${process.env.RUFF_ISSUES} |
+          | 📋 Líneas duplicadas | ${process.env.DUPLICATED_LINES} (${process.env.DUPLICATE_PCT}%) |
+
+          Puede ver los detalles completos en [GitOps](${url})`
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body
+          })
