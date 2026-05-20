@@ -100,24 +100,74 @@ runs:
         # rechaza "Relative pathing '.' and '..' is not allowed". Dejamos auto-detect
         # del lockfile / requirements en la raíz del repo.
 
-    - name: Setup Python (fallback to latest 3.x)
-      # Si el runner no tiene la versión solicitada (típicamente porque está EOL —
-      # ej: 3.8 quedó EOL en oct 2024 y `actions/python-versions` ya no la lista
-      # para Ubuntu reciente), caemos a la última 3.x disponible. Esto mantiene
-      # el pipeline funcional cuando el orquestador `v3-test` pasa un default
-      # viejo (`version: '3.8'`) sin obligar a tocar workflows downstream.
+    - name: Setup Python (system fallback)
+      # actions/setup-python@v5 puede fallar en dos casos:
+      #   1. La versión solicitada no está disponible (ej: 3.8 EOL desde oct 2024).
+      #   2. El runner self-hosted no tiene tool-cache poblado y no puede
+      #      descargar el manifest (sin acceso a raw.githubusercontent.com).
+      # En ambos casos caemos al Python que tenga el sistema, e instalamos
+      # uno via package manager si tampoco existe. Creamos shims python/pip
+      # en $GITHUB_PATH para los steps siguientes (que invocan `python`/`pip`).
+      id: setup-py-system
       if: steps.setup-py-primary.outcome == 'failure'
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
+      shell: bash
+      run: |
+        set -euo pipefail
+        PY=""
+        if command -v python3 &>/dev/null; then
+          PY=$(command -v python3)
+        elif command -v python &>/dev/null; then
+          PY=$(command -v python)
+        elif command -v apt-get &>/dev/null; then
+          echo "ℹ️  Instalando Python via apt-get..."
+          sudo apt-get update -y
+          sudo apt-get install -y python3 python3-pip python3-venv
+          PY=$(command -v python3)
+        elif command -v yum &>/dev/null; then
+          echo "ℹ️  Instalando Python via yum..."
+          sudo yum install -y python3 python3-pip
+          PY=$(command -v python3)
+        elif command -v apk &>/dev/null; then
+          echo "ℹ️  Instalando Python via apk..."
+          apk add --no-cache python3 py3-pip
+          PY=$(command -v python3)
+        else
+          echo "❌ ERROR: No se encontró Python en el sistema ni un gestor de paquetes para instalarlo."
+          exit 1
+        fi
+
+        # Shims python/pip en un dir personal para no requerir sudo y exponerlos
+        # a steps siguientes vía $GITHUB_PATH (feature de GitHub Actions).
+        SHIM_DIR="$HOME/.local/python-shim"
+        mkdir -p "$SHIM_DIR"
+        ln -sf "$PY" "$SHIM_DIR/python"
+        if PIP=$(command -v pip3 2>/dev/null || command -v pip 2>/dev/null); then
+          ln -sf "$PIP" "$SHIM_DIR/pip"
+        else
+          echo "ℹ️  pip no encontrado, intentando bootstrap via ensurepip..."
+          "$PY" -m ensurepip --upgrade || "$PY" -m pip --version || true
+        fi
+        echo "$SHIM_DIR" >> "$GITHUB_PATH"
+        echo "✅ Python del sistema: $($PY --version 2>&1) (shim en $SHIM_DIR)"
 
     - name: Report Python version
       shell: bash
       run: |
-        INSTALLED=$(python --version 2>&1)
+        # En este punto, ya sea por setup-python@v5 o por el shim del sistema,
+        # `python` debe estar invocable. Si no, fallamos explícito.
+        if ! command -v python &>/dev/null; then
+          if command -v python3 &>/dev/null; then
+            INSTALLED=$(python3 --version 2>&1)
+          else
+            echo "❌ ERROR: Ni 'python' ni 'python3' están disponibles tras los fallbacks."
+            exit 1
+          fi
+        else
+          INSTALLED=$(python --version 2>&1)
+        fi
         REQUESTED="${{ inputs.version }}"
         if [ "${{ steps.setup-py-primary.outcome }}" = "failure" ]; then
-          echo "::warning::Versión Python solicitada '${REQUESTED}' no disponible en el runner. Se utilizó fallback a la última 3.x (${INSTALLED}). Para evitar este warning, actualizá el default de 'version' en infrastructure-services/continuos-integration@v3-test, o pasá 'version' explícita desde el workflow caller."
+          echo "::warning::Versión Python solicitada '${REQUESTED}' no se pudo instalar via actions/setup-python@v5 (versión EOL o runner sin acceso al manifest). Se utilizó el Python del sistema: ${INSTALLED}. Para fijar la versión exacta: instalá Python en el runner self-hosted, pre-populá el tool-cache, o ajustá el default 'version' en infrastructure-services/continuos-integration@v3-test."
         else
           echo "✅ Python ${INSTALLED} instalado (versión solicitada: ${REQUESTED})."
         fi

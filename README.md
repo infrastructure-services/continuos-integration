@@ -94,14 +94,27 @@ Para apuntar el orquestador a esta branch, alguien debe editar
    correspondiente — no instalar `pytest@latest` en CI.
 9. **Inputs `sonar_*` retenidos vestigiales**: Sentinel reemplaza a SonarQube;
    los inputs siguen existiendo para no romper el contrato con el orquestador.
-10. **Fallback de Python EOL**: el orquestador `v3-test` tiene `version: '3.8'`
-    como default. Python 3.8 está EOL desde octubre 2024 y
-    `actions/setup-python@v5` no lo encuentra en runners con Ubuntu reciente.
-    Para no romper a downstreams que dependen de ese default, el composite usa
-    el patrón `setup-py-primary (continue-on-error) + fallback a '3.x'`:
-    primero intenta la versión solicitada, y si falla cae a la última 3.x
-    disponible emitiendo un `::warning::`. Para fijar la versión real, override
-    `version` en el workflow caller o subí el default en `v3-test`.
+10. **Fallback robusto de Python (EOL + runner aislado)**: el orquestador
+    `v3-test` tiene `version: '3.8'` como default — Python 3.8 está EOL desde
+    octubre 2024. Además, los runners self-hosted del monorepo no siempre
+    tienen el tool-cache de `actions/setup-python@v5` poblado ni acceso al
+    manifest público (`raw.githubusercontent.com/actions/python-versions`), lo
+    que hace que tanto `3.8` como `3.x` fallen con `was not found in the local
+    cache`. Para no romper a downstreams, el composite implementa un único
+    fallback al Python del sistema:
+    - Step 1 `Setup Python (requested version)`: intenta `setup-python@v5` con
+      la versión solicitada. `continue-on-error: true`.
+    - Step 2 `Setup Python (system fallback)`: si el paso 1 falló, usa el
+      `python3` que tenga el sistema; si no existe, lo instala via
+      `apt-get`/`yum`/`apk`. Crea shims `python`/`pip` en `$HOME/.local/python-shim`
+      y los expone via `$GITHUB_PATH` para que los steps siguientes los
+      encuentren con los nombres canónicos.
+    - Step 3 `Report Python version`: emite `::warning::` con la versión real
+      cuando se usó el fallback.
+    Trade-off: el fallback degrada silenciosamente la versión solicitada. Si
+    tu código depende de una versión específica (sintaxis EOL, deps que pinean
+    Python), override `version` en el workflow caller, populá el tool-cache
+    del runner, o subí el default en `v3-test`.
 
 ## Scripts
 
