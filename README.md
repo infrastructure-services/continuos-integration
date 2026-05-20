@@ -123,7 +123,11 @@ Para apuntar el orquestador a esta branch, alguien debe editar
   contenido que en `cicdv3-net-8`.
 - `scripts/setup_pypriv.sh` — Configura acceso a paquetes Python privados de
   GitHub: `git config insteadOf` (cubre `pip install git+https://...`) +
-  `~/.netrc` (cubre herramientas que invocan HTTPS directamente).
+  `~/.netrc` (cubre herramientas que invocan HTTPS directamente). Tolera la
+  ausencia de `git` en el runner (varios self-hosted del monorepo no lo
+  traen): intenta instalarlo via `apt-get`/`yum`/`apk`, y si no se puede,
+  saltea el rewrite con warning pero mantiene `.netrc` (suficiente para
+  pip/curl en la mayoría de los casos).
 
 ## Métricas en el PR
 
