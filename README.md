@@ -62,10 +62,10 @@ análisis de SonarQube por un pipeline de **sensores reportados a Sentinel**.
 - **`workdir_src` / `workdir_test`** deben apuntar al directorio del `go.mod`. El
   default es `src/`; si el módulo está en la raíz del repo, el workflow que invoca
   esta action debe pasar `workdir_src: ./` y `workdir_test: ./`.
-- `golangci-lint` está fijado en `v1.64.8` para mantener compatibilidad con los
-  archivos `.golangci.yml` v1 de la flota de repos. Para migrar a la v2,
-  actualizar `GOLANGCI_VERSION` en `action.yml` (la v2 cambia el esquema de
-  configuración y el flag de salida).
+- `golangci-lint` está fijado en `v2.12.2`. Requiere binario built con Go
+  reciente: los v1.x se construyeron con Go ≤1.24 y rechazan repos que apuntan
+  a Go 1.26+. Si el repo tiene `.golangci.yml` v1, hay que migrar al schema v2
+  (ver [migration guide](https://golangci-lint.run/product/migration-guide/)).
 - Los inputs `sonar_*` se conservan para no romper a los workflows que ya
   invocan esta action; el análisis de calidad ahora lo realiza Sentinel.
 - Rama de prueba (`-test`) — análoga a `react-cicdv3-test`.

@@ -15,6 +15,7 @@ ORGS=(
   "warehouse-andreani"
   "witwot-jms"
   "corporate-solutions-gla"
+  "eandreani"
 )
 
 # Construye la lista GOPRIVATE (prefijos de módulo separados por coma).
