@@ -19,6 +19,20 @@ set -uo pipefail
 
 echo "Enviando reporte a Sentinel: ${REPORT_PATH}"
 
+# Si el archivo de reporte no existe (típicamente porque el step que lo genera
+# falló o se saltó), no tiene sentido invocar curl — devolvería HTTP 000
+# spurious. Skipeamos con warning. Para el último report, esto es bloqueante
+# porque el scan quedaría sin cerrar (mismo principio que abajo).
+if [ ! -f "${REPORT_PATH}" ]; then
+  echo "⚠️ WARNING: archivo de reporte no existe en ${REPORT_PATH}. Posiblemente el step que lo genera (test/lint/etc.) falló o se saltó."
+  if [ "${IS_LAST_REPORT:-false}" = "true" ]; then
+    echo "❌ ERROR: este es el ÚLTIMO reporte y el archivo no existe. El scan quedará PENDING. Fallando el job."
+    exit 1
+  fi
+  echo "El workflow continúa porque no es el último reporte."
+  exit 0
+fi
+
 HTTP_STATUS=$(curl -s -X POST \
   "${SENTINEL_URL}/api/v1/scans/${SCAN_ID}/sensors/${SENSOR_ID}/report" \
   -H "Content-Type: multipart/form-data" \

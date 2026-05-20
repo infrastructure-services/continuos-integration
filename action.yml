@@ -301,7 +301,11 @@ runs:
         mkdir -p "${{ github.workspace }}/TestResults"
         # pytest-cov genera Cobertura XML directamente, sin paso de conversión.
         # --cov=. cubre todo el directorio actual; --cov-branch añade branch coverage.
-        pytest \
+        # Usamos `python -m pytest` (no `pytest` directo) porque varios runners
+        # del monorepo no tienen el dir de scripts de pip (/usr/local/bin)
+        # en PATH — el binario pytest queda instalado pero no se encuentra.
+        # `python -m` lo invoca via módulo y siempre funciona.
+        python -m pytest \
           --cov=. \
           --cov-branch \
           --cov-report=xml:"${{ github.workspace }}/TestResults/Cobertura.xml" \
@@ -327,8 +331,10 @@ runs:
         #   0 = sin issues
         #   1 = se encontraron issues (esperado, no es error del pipeline)
         #   2 = error de configuración / argumentos
+        # Usamos `python -m ruff` (mismo motivo que pytest: /usr/local/bin
+        # puede no estar en PATH en runners self-hosted).
         set +e
-        ruff check . \
+        python -m ruff check . \
           --output-format=json \
           --output-file="${{ github.workspace }}/ruff-report.json"
         EXIT_CODE=$?

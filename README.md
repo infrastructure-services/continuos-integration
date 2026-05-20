@@ -141,6 +141,19 @@ Para apuntar el orquestador a esta branch, alguien debe editar
     `continue-on-error`, y `send_to_sentinel.sh` mira la env var
     `IS_LAST_REPORT`: si es `true` y HTTP no es 2xx, exit 1. Los sends
     intermedios (coverage, ruff, cloc) siguen siendo best-effort.
+13. **Invocar tools como `python -m X` en vez de `X` directo**: varios runners
+    self-hosted RHEL no tienen `/usr/local/bin` (donde pip deja los entry-point
+    scripts: `pytest`, `ruff`, `coverage`) en `$PATH`. Pip lo avisa con
+    `WARNING: The scripts pytest are installed in '/usr/local/bin' which is
+    not on PATH`. Como los módulos sí están importables, los steps `Test` y
+    `Run ruff` usan `python -m pytest …` y `python -m ruff check …` — esto
+    funciona sin importar dónde quedó el binario.
+14. **`send_to_sentinel.sh` chequea existencia del reporte**: si el step que
+    genera el reporte falló (ej: pytest no encontrado → no hay Cobertura.xml),
+    el send sin esta validación devolvía `HTTP Status: 000` + `cat:
+    sentinel_response.txt: No such file or directory`. Ahora el script detecta
+    archivo ausente, emite warning y saltea curl. Si es el último reporte, exit
+    1 (bloqueante, mismo principio que HTTP no-2xx).
 
 ## Scripts
 
