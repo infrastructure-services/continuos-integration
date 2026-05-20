@@ -115,6 +115,16 @@ Para apuntar el orquestador a esta branch, alguien debe editar
     tu código depende de una versión específica (sintaxis EOL, deps que pinean
     Python), override `version` en el workflow caller, populá el tool-cache
     del runner, o subí el default en `v3-test`.
+11. **`--ignore-installed` en deps del proyecto**: en runners que usan el
+    Python del sistema (RHEL/CentOS), varios paquetes Python están instalados
+    via RPM/dnf (`requests`, `urllib3`, `six`, etc.) y no tienen `RECORD` file
+    — pip aborta el uninstall con `Cannot uninstall X: The package was installed
+    by rpm`. El step `Install project dependencies` usa `--ignore-installed`
+    para que pip saltee el uninstall y deposite la versión nueva por encima
+    en `/usr/local/lib/.../site-packages`. El paquete RPM queda intacto pero
+    el nuevo gana en `sys.path`. Trade-off: dos versiones coexisten en disco
+    (mayor footprint), pero el runtime usa la nueva. Para evitarlo: usar
+    venv o pre-popular el tool-cache del runner.
 
 ## Scripts
 

@@ -271,17 +271,25 @@ runs:
         #   1. requirements.txt        — proyectos pip clásicos
         #   2. requirements-dev.txt    — extras para tests/lint si existe
         #   3. pyproject.toml          — instala el paquete editable (incluye deps)
+        #
+        # --ignore-installed: en runners que usan el Python del sistema (caso
+        # fallback) suele haber paquetes instalados via RPM/dnf (sin RECORD
+        # file). Pip no puede desinstalarlos y aborta con "Cannot uninstall
+        # X: The package was installed by rpm". Con --ignore-installed, pip
+        # salta el uninstall y instala la versión nueva por encima en
+        # /usr/local/lib/.../site-packages (gana por orden de sys.path).
+        PIP_FLAGS="--ignore-installed"
         if [ -f requirements.txt ]; then
           echo "ℹ️  Instalando dependencias desde requirements.txt"
-          python -m pip install -r requirements.txt
+          python -m pip install $PIP_FLAGS -r requirements.txt
         fi
         if [ -f requirements-dev.txt ]; then
           echo "ℹ️  Instalando dependencias desde requirements-dev.txt"
-          python -m pip install -r requirements-dev.txt
+          python -m pip install $PIP_FLAGS -r requirements-dev.txt
         fi
         if [ -f pyproject.toml ]; then
           echo "ℹ️  Instalando paquete desde pyproject.toml (editable)"
-          python -m pip install -e . || python -m pip install .
+          python -m pip install $PIP_FLAGS -e . || python -m pip install $PIP_FLAGS .
         fi
 
     - name: Test
