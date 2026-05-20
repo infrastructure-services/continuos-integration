@@ -53,12 +53,13 @@ análisis de SonarQube por un pipeline de **sensores reportados a Sentinel**.
 
 ## Notas
 
-- **Sentinel es best-effort.** `Create Sentinel Scan` usa `--connect-timeout` +
-  `continue-on-error`: si el runner no llega a la API de Sentinel, loguea un
-  warning y el pipeline sigue (build/test/golangci-lint/cloc/jscpd corren igual);
-  solo se omiten los envíos a Sentinel (gateados con `if: env.SCAN_ID != ''`).
-  Para reportar a Sentinel, el runner debe poder resolver `sentinel_url` — es una
-  URL interna de Andreani, así que requiere un runner self-hosted en la red.
+- **Sentinel es bloqueante.** `Create Sentinel Scan` falla la action si no
+  obtiene `scanId` o no puede contactar la API (`--connect-timeout 30`,
+  `--max-time 120`). El runner debe poder resolver `sentinel_url` (URL interna
+  de Andreani → requiere runner self-hosted en la red). Los envíos individuales
+  (`Send X to Sentinel`) mantienen `continue-on-error: true` para tolerar
+  errores transitorios de un solo reporte sin romper el run (igual que
+  `cicdv3-net-8`).
 - **`workdir_src` / `workdir_test`** deben apuntar al directorio del `go.mod`. El
   default es `src/`; si el módulo está en la raíz del repo, el workflow que invoca
   esta action debe pasar `workdir_src: ./` y `workdir_test: ./`.
