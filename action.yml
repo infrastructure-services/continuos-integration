@@ -124,9 +124,13 @@ runs:
           sudo apt-get install -y python3 python3-pip python3-venv
           PY=$(command -v python3)
         elif command -v yum &>/dev/null; then
-          echo "ℹ️  Instalando Python via yum..."
-          sudo yum install -y python3 python3-pip
-          PY=$(command -v python3)
+          # En RHEL 8 `yum install python3` resuelve al módulo por defecto
+          # python36 (Python 3.6), por debajo del piso 3.9 del tooling.
+          # Pedimos explícitamente python3.11 (módulo de AppStream); si no
+          # está disponible, caemos a python3 y el gate de versión avisará.
+          echo "ℹ️  Instalando Python 3.11 via yum (python3 = 3.6 en RHEL 8)..."
+          sudo yum install -y python3.11 python3.11-pip || sudo yum install -y python3 python3-pip
+          PY=$(command -v python3.11 || command -v python3)
         elif command -v apk &>/dev/null; then
           echo "ℹ️  Instalando Python via apk..."
           apk add --no-cache python3 py3-pip
@@ -171,6 +175,28 @@ runs:
         else
           echo "✅ Python ${INSTALLED} instalado (versión solicitada: ${REQUESTED})."
         fi
+
+    - name: Enforce minimum Python version
+      # El tooling de análisis pinneado impone un piso de versión de Python:
+      #   pytest-cov 6.0.0 -> requires-python >= 3.9  (piso efectivo)
+      #   pytest 8.3.4     -> requires-python >= 3.8
+      # Si setup-python@v5 falló y el fallback instaló una versión vieja
+      # (RHEL 8: `yum install python3` = 3.6), el `pip install` del step
+      # `Install build tooling` muere con "No matching distribution found
+      # for pytest==" — un error que no delata la causa. Cortamos acá, en
+      # el step correcto y antes de crear el scan en Sentinel, con un
+      # mensaje accionable.
+      shell: bash
+      run: |
+        set -euo pipefail
+        PY=python; command -v python >/dev/null 2>&1 || PY=python3
+        PYVER=$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+        PYMAJ=${PYVER%.*}; PYMIN=${PYVER#*.}
+        if [ "$PYMAJ" -lt 3 ] || { [ "$PYMAJ" -eq 3 ] && [ "$PYMIN" -lt 9 ]; }; then
+          echo "::error::Python ${PYVER} es insuficiente: este pipeline requiere Python >= 3.9 (lo exige pytest-cov 6.0.0). actions/setup-python@v5 no pudo proveer la versión solicitada y el fallback usó el Python del sistema. Solución: subí el default 'version' (>= 3.9) en infrastructure-services/continuos-integration@v3-test, override 'version' en el workflow caller, o instalá/pre-populá Python >= 3.9 en el runner self-hosted."
+          exit 1
+        fi
+        echo "✅ Python ${PYVER} cumple el mínimo requerido (>= 3.9)."
 
     - name: Configure Python private packages
       shell: bash
