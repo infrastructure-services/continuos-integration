@@ -42,9 +42,9 @@ inputs:
 
   # Build
   version:
-    description: "version de Python, ej 3.7, 3.8..."
+    description: "Versión de Python para los workflows Python / PythonData (ej: '3.11', '3.12'). Mínimo 3.9: el tooling del pipeline (pytest-cov 6.0.0) no soporta versiones anteriores, y 3.8 está EOL desde oct 2024."
     required: false
-    default: '3.8'
+    default: '3.12'
   matrix_version:
     description: "matrix de pruebas node"
     required: false
