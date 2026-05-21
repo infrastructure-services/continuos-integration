@@ -166,12 +166,25 @@ runs:
     - name: Build
       shell: bash
       working-directory: ${{ github.workspace }}/${{ inputs.workdir_src }}
+      # continue-on-error: un build roto no aborta el resto del análisis ni
+      continue-on-error: true
+      # CGO_ENABLED=1 es el default nativo de Go. Lo fijamos explícito porque
+      # algunos runners self-hosted lo tienen forzado a 0 (`go env -w` o el
+      # .env del runner), lo que rompe repos con dependencias cgo: ej. el
+      # cliente IBM MQ (`mq-golang`), que sin cgo compila vacío → `undefined:
+      # ibmmq.*`. En repos Go puros no cambia nada (gcc solo se invoca si hay
+      # un paquete `import "C"` real en el build).
+      env:
+        CGO_ENABLED: '1'
       run: go build ./...
 
     - name: Test
       shell: bash
       working-directory: ${{ github.workspace }}/${{ inputs.workdir_test }}
       continue-on-error: true
+      # CGO_ENABLED=1: idem step Build (compilar paquetes cgo).
+      env:
+        CGO_ENABLED: '1'
       run: |
         go test ./... \
           -covermode=atomic \
@@ -207,6 +220,9 @@ runs:
     - name: Run golangci-lint
       shell: bash
       working-directory: ${{ github.workspace }}/${{ inputs.workdir_src }}
+      # CGO_ENABLED=1: idem step Build — golangci-lint también typechequea.
+      env:
+        CGO_ENABLED: '1'
       run: |
         # golangci-lint v2.x: binario built con Go reciente (los v1.x se construyeron
         # con Go ≤1.24 y rechazan repos que targetean Go 1.26+). CLI v2 usa
