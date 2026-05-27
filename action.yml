@@ -105,38 +105,72 @@ runs:
       #   1. La versión solicitada no está disponible (ej: 3.8 EOL desde oct 2024).
       #   2. El runner self-hosted no tiene tool-cache poblado y no puede
       #      descargar el manifest (sin acceso a raw.githubusercontent.com).
-      # En ambos casos caemos al Python que tenga el sistema, e instalamos
-      # uno via package manager si tampoco existe. Creamos shims python/pip
+      # En ambos casos buscamos un Python >= 3.9 ya instalado en el sistema
+      # (preferimos `python3.11`/`python3.12` explícitos antes que el alias
+      # `python3`, porque en RHEL 8 `python3` = 3.6). Si no encontramos uno
+      # apto, instalamos uno via package manager. Creamos shims python/pip
       # en $GITHUB_PATH para los steps siguientes (que invocan `python`/`pip`).
       id: setup-py-system
       if: steps.setup-py-primary.outcome == 'failure'
       shell: bash
       run: |
         set -euo pipefail
-        PY=""
-        if command -v python3 &>/dev/null; then
-          PY=$(command -v python3)
-        elif command -v python &>/dev/null; then
-          PY=$(command -v python)
-        elif command -v apt-get &>/dev/null; then
-          echo "ℹ️  Instalando Python via apt-get..."
-          sudo apt-get update -y
-          sudo apt-get install -y python3 python3-pip python3-venv
-          PY=$(command -v python3)
-        elif command -v yum &>/dev/null; then
-          # En RHEL 8 `yum install python3` resuelve al módulo por defecto
-          # python36 (Python 3.6), por debajo del piso 3.9 del tooling.
-          # Pedimos explícitamente python3.11 (módulo de AppStream); si no
-          # está disponible, caemos a python3 y el gate de versión avisará.
-          echo "ℹ️  Instalando Python 3.11 via yum (python3 = 3.6 en RHEL 8)..."
-          sudo yum install -y python3.11 python3.11-pip || sudo yum install -y python3 python3-pip
-          PY=$(command -v python3.11 || command -v python3)
-        elif command -v apk &>/dev/null; then
-          echo "ℹ️  Instalando Python via apk..."
-          apk add --no-cache python3 py3-pip
-          PY=$(command -v python3)
-        else
-          echo "❌ ERROR: No se encontró Python en el sistema ni un gestor de paquetes para instalarlo."
+        MIN_MAJOR=3
+        MIN_MINOR=9
+
+        version_ok() {
+          [ -x "$1" ] || return 1
+          "$1" -c "import sys; sys.exit(0 if sys.version_info[:2] >= (${MIN_MAJOR}, ${MIN_MINOR}) else 1)" 2>/dev/null
+        }
+
+        find_modern_python() {
+          local cand path
+          for cand in python3.13 python3.12 python3.11 python3.10 python3.9 python3 python; do
+            path=$(command -v "$cand" 2>/dev/null) || continue
+            if version_ok "$path"; then
+              echo "$path"
+              return 0
+            fi
+          done
+          return 1
+        }
+
+        SUDO=""
+        [ "${EUID:-$(id -u)}" -ne 0 ] && SUDO="sudo"
+
+        PY=$(find_modern_python || true)
+
+        if [ -z "$PY" ]; then
+          # Ningún Python existente cumple el mínimo (típico en RHEL 8 con
+          # solo `python3` = 3.6). Instalamos 3.11 con el gestor nativo.
+          if command -v dnf &>/dev/null; then
+            echo "ℹ️  Instalando Python 3.11 via dnf..."
+            $SUDO dnf install -y python3.11 python3.11-pip \
+              || $SUDO dnf install -y python311 python311-pip \
+              || $SUDO dnf install -y python3.9 python3.9-pip
+          elif command -v yum &>/dev/null; then
+            echo "ℹ️  Instalando Python 3.11 via yum..."
+            $SUDO yum install -y python3.11 python3.11-pip \
+              || $SUDO yum install -y python311 python311-pip \
+              || $SUDO yum install -y python3.9 python3.9-pip
+          elif command -v apt-get &>/dev/null; then
+            echo "ℹ️  Instalando Python via apt-get..."
+            $SUDO apt-get update -y
+            $SUDO apt-get install -y python3.11 python3.11-venv python3-pip \
+              || $SUDO apt-get install -y python3 python3-pip python3-venv
+          elif command -v apk &>/dev/null; then
+            echo "ℹ️  Instalando Python via apk..."
+            $SUDO apk add --no-cache python3 py3-pip
+          else
+            echo "❌ ERROR: No hay gestor de paquetes (dnf/yum/apt/apk) para instalar Python."
+            exit 1
+          fi
+
+          PY=$(find_modern_python || true)
+        fi
+
+        if [ -z "$PY" ]; then
+          echo "❌ ERROR: No se pudo proveer Python >= ${MIN_MAJOR}.${MIN_MINOR} en el runner."
           exit 1
         fi
 
@@ -145,14 +179,24 @@ runs:
         SHIM_DIR="$HOME/.local/python-shim"
         mkdir -p "$SHIM_DIR"
         ln -sf "$PY" "$SHIM_DIR/python"
-        if PIP=$(command -v pip3 2>/dev/null || command -v pip 2>/dev/null); then
+
+        # Resolver el pip que matchea la versión elegida (ej. pip3.11 para
+        # python3.11). Caer a pip3/pip solo si no hay match exacto — un
+        # `pip3` genérico puede apuntar al python viejo del sistema.
+        PY_NAME=$(basename "$PY")
+        PIP_NAME="${PY_NAME/python/pip}"
+        PIP=""
+        for pip_cand in "$PIP_NAME" pip3 pip; do
+          if P=$(command -v "$pip_cand" 2>/dev/null); then PIP="$P"; break; fi
+        done
+        if [ -n "$PIP" ]; then
           ln -sf "$PIP" "$SHIM_DIR/pip"
         else
-          echo "ℹ️  pip no encontrado, intentando bootstrap via ensurepip..."
+          echo "ℹ️  pip no encontrado, bootstrap via ensurepip..."
           "$PY" -m ensurepip --upgrade || "$PY" -m pip --version || true
         fi
         echo "$SHIM_DIR" >> "$GITHUB_PATH"
-        echo "✅ Python del sistema: $($PY --version 2>&1) (shim en $SHIM_DIR)"
+        echo "✅ Python del sistema: $("$PY" --version 2>&1) en $PY (shim en $SHIM_DIR)"
 
     - name: Report Python version
       shell: bash
