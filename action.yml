@@ -34,7 +34,6 @@ runs:
               exit 0
             else
               echo "status code: $status_code"
-              echo "se reintenta"
             fi
 
             if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
