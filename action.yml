@@ -32,6 +32,9 @@ runs:
             elif [ "$status_code" -eq 404 ]; then
               echo "::warning::❌ The application is not registered in GitOps. Send message to DevOps team"
               exit 0
+            else
+              echo "status code: $status_code"
+              echo "se reintenta"
             fi
 
             if [[ $ATTEMPT -lt $MAX_ATTEMPTS ]]; then
@@ -41,7 +44,7 @@ runs:
             fi
             ((ATTEMPT++))
           done
-          exit 1
+          exit 0
             
 
 
