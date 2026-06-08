@@ -297,7 +297,9 @@ runs:
     - name: Install jscpd
       shell: bash
       run: |
-        npm install -g jscpd
+        # npm install cpd-linux-x64-gnu
+        # npm install -g jscpd
+        npm install jscpd
 
 
     - name: Run jscpd – Duplicate Code Detection
@@ -305,7 +307,6 @@ runs:
       shell: bash
       working-directory: ${{ inputs.workdir_src }}
       run: |
-        npm install cpd-linux-x64-gnu
         jscpd . \
           --reporters "json" \
           --output "${{ github.workspace }}/jscpd-report" \
