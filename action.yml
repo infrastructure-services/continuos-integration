@@ -1,5 +1,5 @@
-name: "SonarQube Analyzer .NET"
-description: "Se realiza el análisis en sonarqube para NET"
+name: "Architecture Code Analyzer .NET"
+description: "Se realiza el análisis de código para NET"
 inputs:
   github_username:
     description: "usuario de github para autenticarse en los packages"
