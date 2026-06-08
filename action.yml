@@ -40,7 +40,7 @@ runs:
   using: "composite"
   steps:
       - name: "Build and Test"
-        uses: architecture-it/infrastructure-services@cicdv3-javascript-base
+        uses: infrastructure-services/continuos-integration@cicdv3-javascript-base
         with:
           matrix_version: ${{ inputs.matrix_version }}
           packages_token: ${{ inputs.github_token }}
