@@ -20,22 +20,6 @@ inputs:
     required: false
     default: './'
 
-  # Sonarqube
-  sonar_url: 
-    description: "url sonarqube"
-    required: true
-  sonar_token: 
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
-
   matrix_version:
     description: "matrix de pruebas node"
     required: false
@@ -56,18 +40,11 @@ runs:
   using: "composite"
   steps:
       - name: "Build and Test"
-        uses: architecture-it/actions@cicdv3-react-base
+        uses: architecture-it/continuos-integration@cicdv3-javascript-base
         with:
           matrix_version: ${{ inputs.matrix_version }}
           packages_token: ${{ inputs.github_token }}
           fontawesome_token: ${{ inputs.fontawesome_token }}
           pnpm_version: ${{ inputs.pnpm_version }}
-      - name: "SonarQube Analyzer"
-        uses: architecture-it/actions@sonarqube
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Js'
+
 
