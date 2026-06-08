@@ -9,7 +9,6 @@ runs:
   using: "composite"
   steps:
     - name: Placeholder Step
-      if: ${{ env.WORKFLOW_MATCHED != 'true' }}
       run: |
         echo "Html todavía no cuenta con análisis de calidad de código."
         exit 1
