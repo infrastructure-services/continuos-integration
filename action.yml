@@ -3,31 +3,15 @@ description: "Este archivo de pipeline de CI/CD es una plantilla genérica dise�
 
 inputs:
 
-  # Sonarqube
-  sonar_url: 
-    description: "url sonarqube"
-    required: true
-  sonar_token: 
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
+
 
 runs:
   using: "composite"
   steps:
-      - name: "SonarQube Analyzer"
-        uses: architecture-it/actions@sonarqube
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'html'
+    - name: Placeholder Step
+      if: ${{ env.WORKFLOW_MATCHED != 'true' }}
+      run: |
+        echo "Html todavía no cuenta con análisis de calidad de código."
+        exit 1
+      shell: bash
 
