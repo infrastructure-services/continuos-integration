@@ -11,7 +11,7 @@ runs:
     - name: Placeholder Step
       if: ${{ env.WORKFLOW_MATCHED != 'true' }}
       run: |
-        echo "Html todavía no cuenta con análisis de calidad de código."
+        echo "Php todavía no cuenta con análisis de calidad de código."
         exit 1
       shell: bash
 
