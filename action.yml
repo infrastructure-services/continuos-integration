@@ -50,6 +50,25 @@ inputs:
     required: false
     default: '10'
 
+#Configuraciones de Sentinel
+  sentinel_url:
+    description: "URL base de la API de Sentinel (sin trailing slash)"
+    required: false
+    default: "https://sentinel-api-gitops-prod.apps.andreani.com.ar"
+  sentinel_sensor_id:
+    description: "ID del sensor en Sentinel al que se reportan los análisis"
+    required: false
+    default: "1"
+  gitops_url:
+    description: "URL base de la UI de GitOps (sin trailing slash)"
+    required: false
+    default: "https://gitops.andreani.com"
+  scan_id:
+    description: "ScanId para consultar el Quality Gate en la API Sentinel"
+    required: false
+    default: 1
+  
+
 runs:
   using: "composite"
   steps:
@@ -68,6 +87,10 @@ runs:
         github_token: ${{ inputs.github_token }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
 
     - name: Mark matched (.NET)
       if: ${{ inputs.workflow == '.NET' }}
@@ -82,6 +105,10 @@ runs:
         github_token: ${{ inputs.github_token }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
         dotnet-version: '10.0.x'
 
     - name: Mark matched (.NET 10)
@@ -97,6 +124,10 @@ runs:
         github_token: ${{ inputs.github_token }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
         dotnet-version: '8.0.x'
 
     - name: Mark matched (.NET 8)
@@ -115,6 +146,8 @@ runs:
         matrix_version: ${{ inputs.matrix_version }}
         fontawesome_token: ${{ inputs.fontawesome_token }}
         pnpm_version: ${{ inputs.pnpm_version }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        gitops_url: ${{ inputs.gitops_url }}
 
     - name: Mark matched (Javascript)
       if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' || inputs.workflow == 'Next.js' || inputs.workflow == 'React Native' }}
@@ -129,6 +162,9 @@ runs:
         github_token: ${{ inputs.github_token }}
         workdir_src: ${{ (inputs.workdir_src == './') && './src' || inputs.workdir_src }}
         workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
         go_version: ${{ inputs.go_version }}
 
     - name: Mark matched (Go)
@@ -157,10 +193,9 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
         version: '3.11.0'
