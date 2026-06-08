@@ -26,22 +26,6 @@ inputs:
     required: false
     default: 'stable'
 
-  # Sonarqube (retenidos por compatibilidad — el análisis de calidad lo realiza Sentinel)
-  sonar_url:
-    description: "url sonarqube"
-    required: true
-  sonar_token:
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'go-1.22, microservicio'"
-    default: ""
-    required: false
-
   # Sentinel
   sentinel_url:
     description: "URL base de la API de Sentinel (sin trailing slash)"
@@ -59,21 +43,22 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
     - name: Key Repository
       id: variables
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       with:
         script: |
           const name = context.repo.repo
           const organization = context.repo.owner
           core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
 
+#Cambió de v5 a v6
     - name: Setup Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ inputs.go_version }}
         cache-dependency-path: ${{ github.workspace }}/${{ inputs.workdir_src }}/go.sum
@@ -251,7 +236,7 @@ runs:
         fi
 
     - name: Upload golangci-lint Analysis Report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: golangci-lint-analysis-report
         path: ${{ github.workspace }}/golangci-lint-report.json
@@ -269,7 +254,7 @@ runs:
 
     # ── Métricas de consumo: cloc (Count Lines of Code) ──────────────────────
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: '20'
 
@@ -300,7 +285,7 @@ runs:
           --verbose=0
 
     - name: Upload cloc Report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: cloc-code-metrics-report
         path: ${{ github.workspace }}/cloc-report.json
@@ -415,7 +400,7 @@ runs:
     - name: Comment on PR
       if: github.event_name == 'pull_request'
       continue-on-error: true
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       env:
         GITOPS_URL: ${{ inputs.gitops_url }}
         ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
