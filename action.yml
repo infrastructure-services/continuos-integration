@@ -298,7 +298,7 @@ runs:
       shell: bash
       run: |
         #npm install -g cpd-linux-x64-gnu
-        npm install -g jscpd --include=optional
+        npm install -g jscpd@4.2.1 --include=optional
         #npm install jscpd
 
 
