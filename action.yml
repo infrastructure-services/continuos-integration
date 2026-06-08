@@ -1,73 +1,455 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
-
+name: "✨ React CI"
+description: "Realiza el lint, build, test and coverage"
 inputs:
-  # Github
-  github_username:
-    description: "usuario de github para autenticarse en los packages"
-    required: true
-  github_token:
-    description: "token del usuario con permisos de lectura en packages"
-    required: true
-
-  # Directories
-  workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
-    required: false
-    default: './'
-  workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
-    required: false
-    default: './'
-
-  # Sonarqube
-  sonar_url: 
-    description: "url sonarqube"
-    required: true
-  sonar_token: 
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
-
   matrix_version:
     description: "matrix de pruebas node"
-    required: false
-    default: ""
-
-  ## Build React
+    required: true
   fontawesome_token: 
     description: "token de fontawesome"
     required: false
     default: ''
-  ## pnpm version
-  pnpm_version:
-    description: "version de pnpm"
+  packages_token:
+    description: "token github para autenticarse en packages"
     required: false
-    default: '8'
+    default: ''
+  skip_test:
+    description: "permite skipear los procesos de testing"
+    required: false
+    default: 'false' 
+  ci:
+    description: "Esta variable forza el chequeo del linter y en caso de fallas rompe el flujo"
+    required: false
+    default: 'false'
+  skip_lint:
+    description: "permite skipear los procesos de linter y formateo"
+    required: false
+    default: 'false'
+  cache:
+    description: "permite cachear la carpeta node_modules"
+    required: false
+    default: 'true'
+  pnpm_version:
+    description: "version default pnpm"
+    required: false
+    default: '9'
+  sentinel_url:
+    description: "URL base de la API de Sentinel (sin trailing slash)"
+    required: false
+    default: "https://github-integration-gitops-prod.apps.andreani.com.ar"
+  gitops_url:
+    description: "URL base de la UI de GitOps (sin trailing slash)"
+    required: false
+    default: "https://ui-gitops-test.apps.ocptest.andreani.com.ar"
 
 runs:
   using: "composite"
   steps:
-      - name: "Build and Test"
-        uses: architecture-it/actions@cicdv3-react-base
-        with:
-          matrix_version: ${{ inputs.matrix_version }}
-          packages_token: ${{ inputs.github_token }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          pnpm_version: ${{ inputs.pnpm_version }}
-      - name: "SonarQube Analyzer"
-        uses: architecture-it/actions@sonarqube
-        with:
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          sonar_code: 'Js'
+    - name: Get package manager and install command
+      run: |
+        if [ -f "yarn.lock" ]; then 
+          echo "name=yarn" >> $GITHUB_OUTPUT 
+          echo "command=yarn install --frozen-lockfile" >> $GITHUB_OUTPUT 
+          echo "lock_file=yarn.lock" >> $GITHUB_OUTPUT
+        elif [ -f "package-lock.json" ]; then 
+          echo "name=npm" >> $GITHUB_OUTPUT 
+          echo "command=npm ci --no-progress --loglevel error" >> $GITHUB_OUTPUT 
+          echo "lock_file=package-lock.json" >> $GITHUB_OUTPUT
+        elif [ -f pnpm-lock.yaml ]; then 
+          echo "name=pnpm" >> $GITHUB_OUTPUT 
+          echo "command=pnpm install --frozen-lockfile" >> $GITHUB_OUTPUT 
+          echo "lock_file=pnpm-lock.yaml" >> $GITHUB_OUTPUT
+        else 
+          echo "name=notfound" >> $GITHUB_OUTPUT
+        fi
+      id: package_manager
+      shell: bash
+    - name: validate 'Lockfile'
+      if: ${{ steps.package_manager.outputs.name == 'notfound' }}
+      run: |
+        echo "El código debe contener algún archivo de lockfile ('package-lock.json', 'yarn.lock' o 'pnpm-lock.yaml')."
+        echo "Asegurate de subirlo."
+        echo "ERROR: Falta archivo lockfile. Ver más en https://architecture-it.github.io/docs/Platform/Front/#manejo-de-dependencias"
+        exit 1
+      shell: bash    
+      # Use default with cache
+
+      #Cambié a v6
+    - name: Use pnpm Setup
+      uses: pnpm/action-setup@v6
+      with:
+        version: ${{ inputs.pnpm_version }}
+      if: ${{ steps.package_manager.outputs.name == 'pnpm' }}
+
+      #Cambie a v6
+    - name: Use Node.js ${{ inputs.matrix_version }} - Cache ${{ steps.package_manager.outputs.name }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.matrix_version }}
+        cache: ${{ steps.package_manager.outputs.name }}     
+    - name: Generate .npmrc file
+      uses: architecture-it/actions@generate-npmrc
+      with:
+        npm_token: ${{ inputs.packages_token }}
+        font_awesome_key: ${{ inputs.fontawesome_token }}
+      if: ${{ inputs.packages_token != '' }}
+
+    - name: 'Cache Node Modules Dependencies'
+      uses: actions/cache@v5
+      id: cache-node-modules
+      with:
+        path: 'node_modules'
+        # key depends on package manager
+        key: deps-node-modules-${{ hashFiles(format('**/{0}', steps.package_manager.outputs.lock_file)) }}        
+        restore-keys: |
+          deps-node-modules-${{ hashFiles(format('**/{0}', steps.package_manager.outputs.lock_file)) }}
+      if: inputs.cache == 'true'
+    
+    - name: Install dependencies
+      run: ${{ steps.package_manager.outputs.command }}
+      shell: bash
+      if: inputs.cache == 'false' || steps.cache-node-modules.outputs.cache-hit != 'true'
+
+    - name: "Extract info from Package Json"
+      uses: actions/github-script@v8
+      id: package
+      with:
+        script: |
+          const fs = require('fs')
+          try {
+            const jsonString = fs.readFileSync('./package.json', 'utf8');
+            const json = JSON.parse(jsonString);
+            const lint = json.scripts?.lint || '';
+            const test = json.scripts?.test || '';
+            const extraSlash = '${{ steps.package_manager.outputs.name }}' === 'pnpm' ? '' : '--';
+
+            return { lint, test, extraSlash }
+          } catch(err) {
+            core.error("Error while reading or parsing the 'package.json' file")
+            core.setFailed(err.message)
+          }
+    - name: Lint
+      run: ${{ steps.package_manager.outputs.name }} run lint
+      shell: bash
+      if: ${{ inputs.skip_lint != 'true' && fromJson(steps.package.outputs.result).lint != '' }}
+    - name: Build
+      run: ${{ steps.package_manager.outputs.name }} run build
+      shell: bash
+      env:
+        CI: ${{ inputs.ci == 'true' }}
+    - name: Get tests flags
+      run: |
+        if [ -f package.json ]; then
+          if grep -q vitest package.json; then
+            echo "tests_flags=" >> $GITHUB_OUTPUT
+            echo "coverage_reporter=--coverage.reporter=cobertura" >> $GITHUB_OUTPUT
+          else
+            echo "tests_flags=--runInBand --silent" >> $GITHUB_OUTPUT
+            echo "coverage_reporter=--coverageReporters=cobertura" >> $GITHUB_OUTPUT
+          fi
+        fi
+      id: flags
+      shell: bash
+    - name: Unit tests
+      run: ${{ steps.package_manager.outputs.name }} run test ${{ fromJson(steps.package.outputs.result).extraSlash }} --coverage ${{ steps.flags.outputs.coverage_reporter }} ${{ steps.flags.outputs.tests_flags }}
+      shell: bash
+      env:
+        CI: ${{ inputs.ci == 'true' }}
+      if: ${{ inputs.skip_test != 'true' }}
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-coverage-report
+        path: coverage
+        overwrite: true
+      if: ${{ inputs.skip_test != 'true' }}
+
+    # ── Sentinel: Crear Scan ──────────────────────────────────────────────────
+    - name: Create Sentinel Scan
+      id: sentinel-scan
+      shell: bash
+      run: |
+        REPO_ID="${{ github.repository_id }}"
+        BRANCH="${{ github.head_ref || github.ref_name }}"
+        COMMIT_SHA="${{ github.sha }}"
+        TRIGGERED_BY="${{ github.actor }}"
+        PR_NUMBER="${{ github.event.pull_request.number }}"
+        PR_TITLE="${{ github.event.pull_request.title }}"
+
+        BODY=$(jq -n \
+          --arg branch        "$BRANCH" \
+          --arg commitSha     "$COMMIT_SHA" \
+          --arg triggeredBy   "$TRIGGERED_BY" \
+          --arg prNumber      "$PR_NUMBER" \
+          --arg prTitle       "$PR_TITLE" \
+          '{
+            branch:            $branch,
+            commitSha:         $commitSha,
+            pullRequestNumber: (if $prNumber == "" then null else ($prNumber | tonumber) end),
+            pullRequestTitle:  (if $prTitle  == "" then null else $prTitle end),
+            triggeredBy:       $triggeredBy
+          }')
+
+        echo "Request body: $BODY"
+
+        RESPONSE=$(curl -s -X POST \
+          "${{ inputs.sentinel_url }}/api/v1/repository/${REPO_ID}/scans" \
+          -H "Content-Type: application/json" \
+          -d "$BODY")
+
+        echo "Sentinel response: $RESPONSE"
+
+        SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId')
+        PROJECT_ID=$(echo "$RESPONSE" | jq -r '.projectId')
+        APPLICATION_ID=$(echo "$RESPONSE" | jq -r '.applicationId')
+        ORGANIZATION_ID=$(echo "$RESPONSE" | jq -r '.organizationId')
+
+        if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
+          echo "ERROR: No se pudo obtener el scanId de Sentinel"
+          exit 1
+        fi
+
+        if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener projectId de Sentinel, usando valor por defecto: 0"
+          PROJECT_ID="0"
+        fi
+        if [ -z "$APPLICATION_ID" ] || [ "$APPLICATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener applicationId de Sentinel, usando valor por defecto: 0"
+          APPLICATION_ID="0"
+        fi
+        if [ -z "$ORGANIZATION_ID" ] || [ "$ORGANIZATION_ID" = "null" ]; then
+          echo "⚠️ No se pudo obtener organizationId de Sentinel, usando valor por defecto: 0"
+          ORGANIZATION_ID="0"
+        fi
+
+        echo "SCAN_ID=${SCAN_ID}" >> $GITHUB_ENV
+        echo "PROJECT_ID=${PROJECT_ID}" >> $GITHUB_ENV
+        echo "APPLICATION_ID=${APPLICATION_ID}" >> $GITHUB_ENV
+        echo "ORGANIZATION_ID=${ORGANIZATION_ID}" >> $GITHUB_ENV
+
+        echo "scanId=${SCAN_ID}" >> $GITHUB_OUTPUT
+        echo "projectId=${PROJECT_ID}" >> $GITHUB_OUTPUT
+        echo "applicationId=${APPLICATION_ID}" >> $GITHUB_OUTPUT
+        echo "organizationId=${ORGANIZATION_ID}" >> $GITHUB_OUTPUT
+
+        echo "Sentinel Scan creado con ID: ${SCAN_ID}"
+        echo "Project ID: ${PROJECT_ID} | Application ID: ${APPLICATION_ID} | Organization ID: ${ORGANIZATION_ID}"
+
+    # ── Calidad:  ───────────────────────────────────────────────────────
+    - name: Install ESLint Sentinel dependencies
+      shell: bash
+      run: pnpm install --dir "${{ github.action_path }}/configs" --lockfile=false
+
+    - name: Run ESLint – Quality Analysis
+      continue-on-error: true
+      shell: bash
+      run: |
+        npx eslint . \
+          --config "${{ github.action_path }}/configs/eslint-sentinel.config.mjs" \
+          --format json \
+          --output-file "${{ github.workspace }}/eslint-report.json" || true
+
+    - name: Upload ESLint Analysis Report
+      uses: actions/upload-artifact@v6
+      with:
+        name: eslint-analysis-report
+        path: ${{ github.workspace }}/eslint-report.json
+
+    - name: Send ESLint report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "eslint"
+        REPORT_PATH: ${{ github.workspace }}/eslint-report.json
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Volumen: cloc (Count Lines of Code) ──────────────────────────────────
+    - name: Install cloc
+      shell: bash
+      run: npm install -g cloc
+
+    - name: Run cloc – Code Metrics
+      shell: bash
+      run: |
+        cloc . \
+          --json \
+          --out="${{ github.workspace }}/cloc-report.json" \
+          --exclude-dir=node_modules,dist,build,coverage,.git,.github \
+          --exclude-ext=json,lock \
+          --fullpath \
+          --verbose=0
+
+    - name: Upload cloc Report
+      uses: actions/upload-artifact@v6
+      with:
+        name: cloc-code-metrics-report
+        path: ${{ github.workspace }}/cloc-report.json
+
+    - name: Send cloc report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "cloc"
+        REPORT_PATH: ${{ github.workspace }}/cloc-report.json
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Detección de código duplicado: jscpd ─────────────────────────────────
+    - name: Install jscpd
+      shell: bash
+      run: npm install -g jscpd
+
+    - name: Run jscpd – Duplicate Code Detection
+      continue-on-error: true
+      shell: bash
+      run: |
+        jscpd . \
+          --reporters "json" \
+          --output "${{ github.workspace }}/jscpd-report" \
+          --min-lines 7 \
+          --min-tokens 100 \
+          --threshold 0 \
+          --ignore "**/node_modules/**,**/dist/**,**/build/**,**/.git/**,**/.github/**,**/coverage/**" \
+          --format "javascript,typescript,jsx,tsx,css,scss,html"
+
+    - name: Upload jscpd Report
+      uses: actions/upload-artifact@v6
+      with:
+        name: jscpd-duplicate-code-report
+        path: ${{ github.workspace }}/jscpd-report/jscpd-report.json
+
+    - name: Send jscpd report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "jscpd"
+        REPORT_PATH: ${{ github.workspace }}/jscpd-report/jscpd-report.json
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    # ── Coverage: Cobertura XML ──────────────────────────────────────────────
+    - name: Upload Coverage Cobertura Report
+      uses: actions/upload-artifact@v6
+      with:
+        name: coverage-cobertura-report
+        path: ${{ github.workspace }}/coverage/cobertura-coverage.xml
+      if: ${{ inputs.skip_test != 'true' }}
+
+    - name: Send Coverage report to Sentinel
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "jest"
+        REPORT_PATH: ${{ github.workspace }}/coverage/cobertura-coverage.xml
+        CONTENT_TYPE: "application/xml"
+        IS_LAST_REPORT: "true"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+      if: ${{ inputs.skip_test != 'true' }}
+
+    # ── Feedback:  Feedback Metric to PR ──────────────────────────────────────────────
+
+    - name: Collect Metrics
+      id: metrics
+      continue-on-error: true
+      shell: bash
+      run: |
+        COVERAGE_FILE="${{ github.workspace }}/coverage/cobertura-coverage.xml"
+        if [ -f "$COVERAGE_FILE" ]; then
+          LINE_RATE=$(grep -oP '(?<=line-rate=")[^"]+' "$COVERAGE_FILE" | head -1)
+          if [ -n "$LINE_RATE" ]; then
+            COVERAGE_PCT=$(awk "BEGIN {printf \"%.2f\", $LINE_RATE * 100}")
+          else
+            COVERAGE_PCT="N/A"
+          fi
+        else
+          COVERAGE_PCT="N/A"
+        fi
+        echo "COVERAGE_PCT=${COVERAGE_PCT}" >> $GITHUB_ENV
+
+        ESLINT_FILE="${{ github.workspace }}/eslint-report.json"
+        if [ -f "$ESLINT_FILE" ]; then
+          ESLINT_ISSUES=$(jq 'length' "$ESLINT_FILE" 2>/dev/null || echo "0")
+        else
+          ESLINT_ISSUES="N/A"
+        fi
+        echo "ESLINT_ISSUES=${ESLINT_ISSUES}" >> $GITHUB_ENV
+
+        JSCPD_FILE="${{ github.workspace }}/jscpd-report/jscpd-report.json"
+        if [ -f "$JSCPD_FILE" ]; then
+          DUPLICATED_LINES=$(jq '.statistics.total.duplicatedLines // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+          DUPLICATE_PCT=$(jq '.statistics.total.percentage // 0' "$JSCPD_FILE" 2>/dev/null || echo "0")
+        else
+          DUPLICATED_LINES="N/A"
+          DUPLICATE_PCT="N/A"
+        fi
+        echo "DUPLICATED_LINES=${DUPLICATED_LINES}" >> $GITHUB_ENV
+        echo "DUPLICATE_PCT=${DUPLICATE_PCT}" >> $GITHUB_ENV
+
+    - name: PullRequestFeedback
+      continue-on-error: true
+      shell: bash
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+      run: |
+        ENCODED_BRANCH=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$BRANCH'))")
+        URL="${GITOPS_URL}/sentinel/org/${ORGANIZATION_ID}/project/${PROJECT_ID}/application/${APPLICATION_ID}?branch=${ENCODED_BRANCH}"
+
+        echo "## Análisis de Calidad Finalizado ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Métrica | Valor |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 🧪 Cobertura de código | ${COVERAGE_PCT}% |" >> $GITHUB_STEP_SUMMARY
+        echo "| ⚠️ Issues (ESLint) | ${ESLINT_ISSUES} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 📋 Líneas duplicadas | ${DUPLICATED_LINES} (${DUPLICATE_PCT}%) |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Puede ver los detalles completos en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
+
+    - name: Comment on PR
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
+      uses: actions/github-script@v8
+      env:
+        GITOPS_URL: ${{ inputs.gitops_url }}
+        ORGANIZATION_ID: ${{ env.ORGANIZATION_ID }}
+        PROJECT_ID: ${{ env.PROJECT_ID }}
+        APPLICATION_ID: ${{ env.APPLICATION_ID }}
+        COVERAGE_PCT: ${{ env.COVERAGE_PCT }}
+        ESLINT_ISSUES: ${{ env.ESLINT_ISSUES }}
+        DUPLICATED_LINES: ${{ env.DUPLICATED_LINES }}
+        DUPLICATE_PCT: ${{ env.DUPLICATE_PCT }}
+      with:
+        github-token: ${{ github.token }}
+        script: |
+          const branch = context.payload.pull_request.head.ref
+          const encodedBranch = encodeURIComponent(branch)
+          const url = `${process.env.GITOPS_URL}/sentinel/org/${process.env.ORGANIZATION_ID}/project/${process.env.PROJECT_ID}/application/${process.env.APPLICATION_ID}?branch=${encodedBranch}`
+
+          const body = `## Análisis de Calidad Finalizado ✅
+
+          | Métrica | Valor |
+          |---------|-------|
+          | 🧪 Cobertura de código | ${process.env.COVERAGE_PCT}% |
+          | ⚠️ Issues (ESLint) | ${process.env.ESLINT_ISSUES} |
+          | 📋 Líneas duplicadas | ${process.env.DUPLICATED_LINES} (${process.env.DUPLICATE_PCT}%) |
+
+          Puede ver los detalles completos en [GitOps](${url})`
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body
+          })
 
