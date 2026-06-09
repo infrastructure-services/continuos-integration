@@ -181,6 +181,8 @@ runs:
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
         version: ${{ inputs.version }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        gitops_url: ${{ inputs.gitops_url }}
 
     - name: Mark matched (Python)
       if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData' }}
@@ -194,7 +196,6 @@ runs:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
         sentinel_url: ${{ inputs.sentinel_url }}
-        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
         gitops_url: ${{ inputs.gitops_url }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
