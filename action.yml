@@ -55,6 +55,9 @@ runs:
           const name = context.repo.repo
           const organization = context.repo.owner
           core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
+    - name: Show Debug Data
+      shell: bash
+      run: |
           echo "------------Current-----------------"
           ls -l
           echo "---------------Parent---------------"
