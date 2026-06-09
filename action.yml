@@ -476,7 +476,7 @@ runs:
     # ── Detección de código duplicado: jscpd ─────────────────────────────────
     - name: Install jscpd
       shell: bash
-      run: npm install -g jscpd
+      run: npm install -g jscpd@4.2.1 --include=optional
 
     - name: Run jscpd – Duplicate Code Detection
       continue-on-error: true
