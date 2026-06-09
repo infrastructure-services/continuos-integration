@@ -160,8 +160,10 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ (inputs.workdir_src == './') && './src' || inputs.workdir_src }}
-        workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
+        #Esto es así porque el setup de Go no acepta rutas relativas como cache de dependencias
+        workdir_src: ${{ (inputs.workdir_src == './') && '/src' || inputs.workdir_src }}
+        workdir_test: ${{ (inputs.workdir_test == './') && '/src' || inputs.workdir_test }}
+        ##
         sentinel_url: ${{ inputs.sentinel_url }}
         sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
         gitops_url: ${{ inputs.gitops_url }}
