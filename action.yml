@@ -55,6 +55,13 @@ runs:
           const name = context.repo.repo
           const organization = context.repo.owner
           core.exportVariable('KEY_REPOSITORY', `${organization}_${name}`)
+          echo "------------Current-----------------"
+          ls -l
+          echo "---------------Parent---------------"
+          ls -l ..
+          echo "-----------workspace----------------"
+          echo ${{ github.workspace }}
+          echo "-----------otras----------------"
 
 #Cambió de v5 a v6
     - name: Setup Go
