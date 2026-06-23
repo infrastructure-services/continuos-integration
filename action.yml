@@ -2,11 +2,6 @@ name: "Continuos Integration Wrapper"
 description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
 
 inputs:
-  qa:
-    description: 'QA'
-    required: true
-    type: boolean
-    default: false
   workflow: 
     description: "nombre del workflow a ejecutar"
     required: true
@@ -47,88 +42,243 @@ inputs:
 
   # Build
   version:
-    description: "version de lenguaje, ej 3.7, 3.8..."
+    description: "version de Python, ej 3.7, 3.8..."
     required: false
     default: '3.8'
   matrix_version:
     description: "matrix de pruebas node"
     required: false
     default: ""
+  go_version:
+    description: "Versión de Go a instalar para el build"
+    required: false
+    default: 'stable' 
 
   ## Build React
   fontawesome_token: 
     description: "token de fontawesome"
     required: false
     default: ''
+  ## pnpm version
+  pnpm_version:
+    description: "version de pnpm"
+    required: false
+    default: '10'
 
 runs:
   using: "composite"
-  steps: 
-      - name: Checkout
-        uses: actions/checkout@v3.5.0
-      - name: "Continuos Integration .NET"
-        if: ${{ inputs.workflow == '.NET' }}
-        uses: infrastructure-services/continuos-integration@net
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
+  steps:
+    - name: Check Application
+      uses: infrastructure-services/continuos-integration@check-if-exists-app
+#Comento todo ya que sonar no va más
+    - name: Init workflow match flag
+      run: echo "WORKFLOW_MATCHED=false" >> $GITHUB_ENV
+      shell: bash
 
-      - name: "Continuos Integration .NET 8"
-        if: ${{ inputs.workflow == '.NET 8' }}
-        uses: infrastructure-services/continuos-integration@net-8
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
+    - name: "Continuos Integration .NET"
+      if: ${{ inputs.workflow == '.NET' }}
+      uses: infrastructure-services/continuos-integration@net
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
 
-      - name: "Continuos Integration React & Next.js"
-        if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Next.js' || inputs.workflow == 'Vite'}}
-        uses: infrastructure-services/continuos-integration@react
-        with: 
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
-          matrix_version: ${{ inputs.matrix_version }}
-          fontawesome_token: ${{ inputs.fontawesome_token }}
-          
-      - name: "Continuos Integration Golang"
-        if: ${{ inputs.workflow == 'Go' }}
-        uses: infrastructure-services/continuos-integration@go
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ (inputs.workdir_src == './') && 'src/' || inputs.workdir_src }} # se agrega ya que golang necesita el archivo main.go
-          workdir_test: ${{ (inputs.workdir_test == './') && 'src/' || inputs.workdir_test }}
+    - name: Mark matched (.NET)
+      if: ${{ inputs.workflow == '.NET' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
 
-      - name: "Continuos Integration Python"
-        if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'Python Data'}}
-        uses: infrastructure-services/continuos-integration@python
-        with:
-          github_username: ${{ inputs.github_username }}
-          github_token: ${{ inputs.github_token }}
-          sonar_url: ${{ inputs.sonar_url }}
-          sonar_token: ${{ inputs.sonar_token }}
-          sonar_tags: ${{ inputs.sonar_tags }}
-          sonar_custom: ${{ inputs.sonar_custom }}
-          workdir_src: ${{ inputs.workdir_src }}
-          workdir_test: ${{ inputs.workdir_test }}
+    - name: "Continuos Integration .NET 10"
+      if: ${{ inputs.workflow == '.NET 10' }}
+      uses: infrastructure-services/continuos-integration@net-8
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        dotnet-version: '10.0.x'
+
+    - name: Mark matched (.NET 10)
+      if: ${{ inputs.workflow == '.NET 10' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration .NET 8"
+      if: ${{ inputs.workflow == '.NET 8' }}
+      uses: infrastructure-services/continuos-integration@net-8
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        dotnet-version: '8.0.x'
+
+    - name: Mark matched (.NET 8)
+      if: ${{ inputs.workflow == '.NET 8' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration React"
+      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' }}
+      uses: infrastructure-services/continuos-integration@react
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        matrix_version: ${{ inputs.matrix_version }}
+        fontawesome_token: ${{ inputs.fontawesome_token }}
+        pnpm_version: ${{ inputs.pnpm_version }}
+
+    - name: Mark matched (React)
+      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration Next.js"
+      if: ${{ inputs.workflow == 'Next.js' }}
+      uses: infrastructure-services/continuos-integration@nextjs
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        matrix_version: ${{ inputs.matrix_version }}
+        fontawesome_token: ${{ inputs.fontawesome_token }}
+        pnpm_version: ${{ inputs.pnpm_version }}
+
+    - name: Mark matched (Next.js)
+      if: ${{ inputs.workflow == 'Next.js' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration Golang"
+      if: ${{ inputs.workflow == 'Go' }}
+      uses: infrastructure-services/continuos-integration@go
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ (inputs.workdir_src == './') && './src' || inputs.workdir_src }}
+        workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
+        go_version: ${{ inputs.go_version }}
+
+    - name: Mark matched (Go)
+      if: ${{ inputs.workflow == 'Go' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration Python"
+      if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData' }}
+      uses: infrastructure-services/continuos-integration@python
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        version: ${{ inputs.version }}
+
+    - name: Mark matched (Python)
+      if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+      
+    - name: "Continuos Integration Python 3.11"
+      if: ${{ inputs.workflow == 'Python311' }}
+      uses: infrastructure-services/continuos-integration@python
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        version: '3.11.0'
+
+    - name: Mark matched (Python311)
+      if: ${{ inputs.workflow == 'Python311' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration React Native"
+      if: ${{ inputs.workflow == 'React Native' }}
+      uses: infrastructure-services/continuos-integration@react-native
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        matrix_version: ${{ inputs.matrix_version }}
+        fontawesome_token: ${{ inputs.fontawesome_token }}
+
+    - name: Mark matched (React Native)
+      if: ${{ inputs.workflow == 'React Native' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration HTML"
+      if: ${{ inputs.workflow == 'html' }}
+      uses: infrastructure-services/continuos-integration@html
+      with:
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+
+    - name: Mark matched (html)
+      if: ${{ inputs.workflow == 'html' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration PHP"
+      if: ${{ inputs.workflow == 'php' }}
+      uses: infrastructure-services/continuos-integration@php
+      with:
+        sonar_url: ${{ inputs.sonar_url }}
+        sonar_token: ${{ inputs.sonar_token }}
+        sonar_tags: ${{ inputs.sonar_tags }}
+        sonar_custom: ${{ inputs.sonar_custom }}
+
+    - name: Mark matched (php)
+      if: ${{ inputs.workflow == 'php' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: Validation of Supported Workflows
+      if: ${{ env.WORKFLOW_MATCHED != 'true' }}
+      run: |
+        echo "::error title=❌ Unsupported workflow::'${{ inputs.workflow }}' no está soportado. Revisá la variable WORKFLOW_CI. Workflows soportados: .NET, .NET 8, .NET 10, CRA, Vite, Rsbuild, Next.js, Go, Python, PythonData, Python311, React Native, html, php."
+        exit 1
+      shell: bash
