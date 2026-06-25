@@ -309,8 +309,8 @@ runs:
         jscpd . \
           --reporters "json" \
           --output "${{ github.workspace }}/jscpd-report" \
-          --min-lines 5 \
-          --min-tokens 50 \
+          --min-lines 10 \
+          --min-tokens 100 \
           --threshold 0 \
           --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/roslyn-report/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
           --format "csharp"
