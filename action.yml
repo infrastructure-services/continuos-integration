@@ -1,254 +1,178 @@
-name: "Continuos Integration Wrapper"
-description: "Este archivo de pipeline de CI/CD es una plantilla genérica diseñada para soportar múltiples tecnologías y frameworks. Su objetivo es automatizar los pasos de integración y despliegue para proyectos de software, garantizando un proceso de desarrollo y entrega eficiente y consistente."
+name: Veracode Dummy Validation
 
-inputs:
-  workflow: 
-    description: "nombre del workflow a ejecutar"
-    required: true
-    
-  # Github
-  github_username:
-    description: "usuario de github para autenticarse en los packages"
-    required: true
-  github_token:
-    description: "token del usuario con permisos de lectura en packages"
-    required: true
+on:
+  workflow_dispatch:
+    inputs:
+      workflow:
+        description: Workflow que se desea simular.
+        required: true
+        default: '.NET'
+        type: choice
+        options:
+          - '.NET'
+          - 'INVALID'
 
-  # Directories
-  workdir_src:
-    description: "directorio donde se encuentra el project a compilar DEFAULT: ./"
-    required: false
-    default: './'
-  workdir_test:
-    description: "directorio donde se encuentra los test DEFAULT: ./"
-    required: false
-    default: './'
-
-
-  # Build
-  version:
-    description: "Versión de Python para los workflows Python / PythonData (ej: '3.11', '3.12'). Mínimo 3.9: el tooling del pipeline (pytest-cov 6.0.0) no soporta versiones anteriores, y 3.8 está EOL desde oct 2024."
-    required: false
-    default: '3.12'
-  matrix_version:
-    description: "matrix de pruebas node"
-    required: false
-    default: ""
-  go_version:
-    description: "Versión de Go a instalar para el build"
-    required: false
-    default: 'stable' 
-
-  ## Build React
-  fontawesome_token: 
-    description: "token de fontawesome"
-    required: false
-    default: ''
-  ## pnpm version
-  pnpm_version:
-    description: "version de pnpm"
-    required: false
-    default: '10'
-
-#Configuraciones de Sentinel
-  sentinel_url:
-    description: "URL base de la API de Sentinel (sin trailing slash)"
-    required: false
-    default: "https://github-integration.andreani.com"
-  sentinel_sensor_id:
-    description: "ID del sensor en Sentinel al que se reportan los análisis"
-    required: false
-    default: "1"
-  gitops_url:
-    description: "URL base de la UI de GitOps (sin trailing slash)"
-    required: false
-    default: "https://gitops.andreani.com"
-  scan_id:
-    description: "ScanId para consultar el Quality Gate en la API Sentinel"
-    required: false
-    default: 1
-  
+permissions:
+  contents: read
 
 runs:
-  using: "composite"
+  using: composite
+
   steps:
-    - name: Check Application
-      uses: infrastructure-services/continuos-integration@check-if-exists-app
-#Comento todo ya que sonar no va más
-    - name: Init workflow match flag
-      run: echo "WORKFLOW_MATCHED=false" >> $GITHUB_ENV
+    - name: Inicializar simulación
+      id: configuration
       shell: bash
-
-    - name: "Continuos Integration .NET"
-      if: ${{ inputs.workflow == '.NET' }}
-      uses: infrastructure-services/continuos-integration@cicdv3-net-8
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        sentinel_url: ${{ inputs.sentinel_url }}
-        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
-        gitops_url: ${{ inputs.gitops_url }}
-        scan_id: ${{ inputs.scan_id }}
-
-    - name: Mark matched (.NET)
-      if: ${{ inputs.workflow == '.NET' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration .NET 10"
-      if: ${{ inputs.workflow == '.NET 10' }}
-      uses: infrastructure-services/continuos-integration@cicdv3-net-8
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        sentinel_url: ${{ inputs.sentinel_url }}
-        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
-        gitops_url: ${{ inputs.gitops_url }}
-        scan_id: ${{ inputs.scan_id }}
-        dotnet-version: '10.0.x'
-
-    - name: Mark matched (.NET 10)
-      if: ${{ inputs.workflow == '.NET 10' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration .NET 8"
-      if: ${{ inputs.workflow == '.NET 8' }}
-      uses: infrastructure-services/continuos-integration@cicdv3-net-8
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        sentinel_url: ${{ inputs.sentinel_url }}
-        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
-        gitops_url: ${{ inputs.gitops_url }}
-        scan_id: ${{ inputs.scan_id }}
-        dotnet-version: '8.0.x'
-
-    - name: Mark matched (.NET 8)
-      if: ${{ inputs.workflow == '.NET 8' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration Javascript"
-      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' || inputs.workflow == 'Next.js' || inputs.workflow == 'React Native' }}
-      uses: infrastructure-services/continuos-integration@javascript-cicdv3
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        matrix_version: ${{ inputs.matrix_version }}
-        fontawesome_token: ${{ inputs.fontawesome_token }}
-        pnpm_version: ${{ inputs.pnpm_version }}
-        sentinel_url: ${{ inputs.sentinel_url }}
-        gitops_url: ${{ inputs.gitops_url }}
-
-    - name: Mark matched (Javascript)
-      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' || inputs.workflow == 'Next.js' || inputs.workflow == 'React Native' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration Golang"
-      if: ${{ inputs.workflow == 'Go' }}
-      uses: infrastructure-services/continuos-integration@go-cicdv3
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        #Esto es así porque el setup de Go no acepta rutas relativas como cache de dependencias
-        workdir_src: ${{ (inputs.workdir_src == './') && '/src' || inputs.workdir_src }}
-        workdir_test: ${{ (inputs.workdir_test == './') && '/src' || inputs.workdir_test }}
-        ##
-        sentinel_url: ${{ inputs.sentinel_url }}
-        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
-        gitops_url: ${{ inputs.gitops_url }}
-        go_version: ${{ inputs.go_version }}
-
-    - name: Mark matched (Go)
-      if: ${{ inputs.workflow == 'Go' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration Python"
-      if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData' }}
-      uses: infrastructure-services/continuos-integration@python-cicdv3
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        version: ${{ inputs.version }}
-        sentinel_url: ${{ inputs.sentinel_url }}
-        gitops_url: ${{ inputs.gitops_url }}
-
-    - name: Mark matched (Python)
-      if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-      
-    - name: "Continuos Integration Python 3.11"
-      if: ${{ inputs.workflow == 'Python311' }}
-      uses: infrastructure-services/continuos-integration@python-cicdv3
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        sentinel_url: ${{ inputs.sentinel_url }}
-        gitops_url: ${{ inputs.gitops_url }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        version: '3.11.0'
-
-    - name: Mark matched (Python311)
-      if: ${{ inputs.workflow == 'Python311' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-
-    - name: Mark matched (React Native)
-      if: ${{ inputs.workflow == 'React Native' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration HTML"
-      if: ${{ inputs.workflow == 'html' }}
-      uses: infrastructure-services/continuos-integration@html-cicdv3
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        matrix_version: ${{ inputs.matrix_version }}
-
-
-    - name: Mark matched (html)
-      if: ${{ inputs.workflow == 'html' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration PHP"
-      if: ${{ inputs.workflow == 'php' }}
-      uses: infrastructure-services/continuos-integration@php-cicdv3
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        matrix_version: ${{ inputs.matrix_version }}
-        
-    - name: Mark matched (php)
-      if: ${{ inputs.workflow == 'php' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: Validation of Supported Workflows
-      if: ${{ env.WORKFLOW_MATCHED != 'true' }}
+      env:
+        INPUT_WORKFLOW: ${{ inputs.workflow }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_APPNAME: ${{ inputs.appname }}
       run: |
-        echo "::error title=❌ Unsupported workflow::'${{ inputs.workflow }}' no está soportado. Contactar a Devops para revisar la variable WORKFLOW_CI. Workflows soportados: .NET, .NET 8, .NET 10, CRA, Vite, Rsbuild, Next.js, Go, Python, PythonData, Python311, React Native, html, php."
-        exit 1
-      shell: bash
+        set -Eeuo pipefail
 
+        trim() {
+          local value="$1"
+
+          value="${value#"${value%%[![:space:]]*}"}"
+          value="${value%"${value##*[![:space:]]}"}"
+
+          printf '%s' "$value"
+        }
+
+        WORKFLOW="$(trim "$INPUT_WORKFLOW")"
+        PROJECT="$(trim "$INPUT_PROJECT")"
+        APPNAME="$(trim "$INPUT_APPNAME")"
+
+        if [[ -z "$WORKFLOW" ]]; then
+          echo "::error::El input 'workflow' está vacío."
+          exit 1
+        fi
+
+        if [[ -z "$PROJECT" ]]; then
+          echo "::error::El input 'project' está vacío. Validar vars.PROJECT."
+          exit 1
+        fi
+
+        if [[ -z "$APPNAME" ]]; then
+          echo "::error::El input 'appname' está vacío. Validar vars.APPNAME."
+          exit 1
+        fi
+
+        VERACODE_APP_NAME="${PROJECT}_${APPNAME}"
+
+        echo "WORKFLOW_MATCHED=false" >> "$GITHUB_ENV"
+        echo "DUMMY_WORKFLOW=$WORKFLOW" >> "$GITHUB_ENV"
+        echo "DUMMY_VERACODE_APP_NAME=$VERACODE_APP_NAME" >> "$GITHUB_ENV"
+
+        echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
+        echo "veracode_app_name=$VERACODE_APP_NAME" >> "$GITHUB_OUTPUT"
+
+        echo "Modo dummy activo."
+        echo "Workflow solicitado: $WORKFLOW"
+        echo "Nombre Veracode calculado: $VERACODE_APP_NAME"
+
+    - name: Simular Check Application
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+
+        echo "🧪 [DUMMY] Se simularía:"
+        echo "uses: infrastructure-services/continuos-integration@check-if-exists-app"
+        echo "No se realizó ninguna consulta ni modificación externa."
+
+    - name: Simular Continuous Integration .NET
+      id: dotnet
+      if: ${{ inputs.workflow == '.NET' }}
+      shell: bash
+      env:
+        SOLUTION: ${{ inputs.solution }}
+        DOTNET_VERSION: ${{ inputs.dotnet-version }}
+
+        HAS_VERACODE_API_ID: ${{ inputs.veracode-api-id != '' }}
+        HAS_VERACODE_API_KEY: ${{ inputs.veracode-api-key != '' }}
+
+        HAS_NUGET_USER: ${{ inputs.nuget-user != '' }}
+        HAS_NUGET_TOKEN: ${{ inputs.nuget-token != '' }}
+      run: |
+        set -Eeuo pipefail
+
+        echo "WORKFLOW_MATCHED=true" >> "$GITHUB_ENV"
+        echo "workflow_matched=true" >> "$GITHUB_OUTPUT"
+
+        if [[ -n "$SOLUTION" ]]; then
+          SOLUTION_DESCRIPTION="$SOLUTION"
+        else
+          SOLUTION_DESCRIPTION="detección automática"
+        fi
+
+        echo "🧪 [DUMMY] Coincidencia encontrada para workflow=.NET"
+        echo "🧪 [DUMMY] No se ejecutará cicdv3-net-8."
+        echo "🧪 [DUMMY] Solución: $SOLUTION_DESCRIPTION"
+        echo "🧪 [DUMMY] .NET: $DOTNET_VERSION"
+        echo "🧪 [DUMMY] Application name: $DUMMY_VERACODE_APP_NAME"
+
+        echo "🧪 [DUMMY] Veracode API ID configurado: $HAS_VERACODE_API_ID"
+        echo "🧪 [DUMMY] Veracode API Key configurada: $HAS_VERACODE_API_KEY"
+
+        echo "🧪 [DUMMY] NuGet user configurado: $HAS_NUGET_USER"
+        echo "🧪 [DUMMY] NuGet token configurado: $HAS_NUGET_TOKEN"
+
+        {
+          echo "## 🧪 Simulación Continuous Integration .NET"
+          echo
+          echo "| Configuración | Valor |"
+          echo "|---|---|"
+          echo "| Modo | Dummy / sin efectos externos |"
+          echo "| Workflow | \`.NET\` |"
+          echo "| Aplicación Veracode | \`$DUMMY_VERACODE_APP_NAME\` |"
+          echo "| Solución | \`$SOLUTION_DESCRIPTION\` |"
+          echo "| .NET | \`$DOTNET_VERSION\` |"
+          echo "| Veracode API ID informado | \`$HAS_VERACODE_API_ID\` |"
+          echo "| Veracode API Key informada | \`$HAS_VERACODE_API_KEY\` |"
+          echo "| NuGet user informado | \`$HAS_NUGET_USER\` |"
+          echo "| NuGet token informado | \`$HAS_NUGET_TOKEN\` |"
+          echo
+          echo "### Acción que se ejecutaría en producción"
+          echo
+          echo "\`infrastructure-services/continuos-integration@cicdv3-net-8\`"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Validar workflow soportado
+      if: ${{ env.WORKFLOW_MATCHED != 'true' }}
+      shell: bash
+      env:
+        FAIL_ON_UNSUPPORTED: ${{ inputs.fail-on-unsupported-workflow }}
+      run: |
+        set -Eeuo pipefail
+
+        {
+          echo "## ⚠️ Workflow no reconocido"
+          echo
+          echo "El valor recibido fue: \`$DUMMY_WORKFLOW\`"
+          echo
+          echo "Workflows soportados actualmente:"
+          echo
+          echo "- \`.NET\`"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [[ "$FAIL_ON_UNSUPPORTED" == "true" ]]; then
+          echo "::error::Workflow no soportado: '$DUMMY_WORKFLOW'."
+          exit 1
+        fi
+
+        echo "::warning::Workflow no soportado: '$DUMMY_WORKFLOW'."
+
+    - name: Publicar resultado dummy
+      id: result
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+
+        MATCHED="${WORKFLOW_MATCHED:-false}"
+
+        echo "workflow_matched=$MATCHED" >> "$GITHUB_OUTPUT"
+
+        echo "Resultado dummy:"
+        echo "  workflow=$DUMMY_WORKFLOW"
+        echo "  workflow_matched=$MATCHED"
+        echo "  veracode_app_name=$DUMMY_VERACODE_APP_NAME"
