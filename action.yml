@@ -1,19 +1,55 @@
-name: Veracode Dummy Validation
+name: Andreani Veracode DevSecOps
+description: Build genérico .NET, Pipeline Scan, SARIF, gate de PR, Upload-and-Scan y policy gate.
 
-on:
-  workflow_dispatch:
-    inputs:
-      workflow:
-        description: Workflow que se desea simular.
-        required: true
-        default: '.NET'
-        type: choice
-        options:
-          - '.NET'
-          - 'INVALID'
+inputs:
+  workflow: 
+    description: "nombre del workflow a ejecutar"
+    required: true
+    
+  appname:
+    description: Valor de APPNAME. Se combina con PROJECT para formar PROJECT_APPNAME.
+    required: true
 
-permissions:
-  contents: read
+  solution:
+    description: Ruta opcional de la solución. Solo es necesaria si el repositorio contiene más de una solución.
+    required: false
+    default: ''
+
+  dotnet-version:
+    description: SDK de respaldo cuando el repositorio no contiene global.json.
+    required: false
+    default: '8.0.x'
+
+  veracode-api-id:
+    description: API ID de Veracode.
+    required: true
+
+  veracode-api-key:
+    description: API Key de Veracode.
+    required: true
+
+  nuget-user:
+    description: Usuario opcional del feed privado de GitHub Packages.
+    required: false
+    default: ''
+
+  nuget-token:
+    description: Token opcional del feed privado de GitHub Packages.
+    required: false
+    default: ''
+  
+outputs:
+  veracode-app-name:
+    description: Nombre final de la aplicación en Veracode.
+    value: ${{ steps.configuration.outputs.veracode_app_name }}
+
+  workflow-matched:
+    description: Indica si el workflow solicitado fue reconocido.
+    value: ${{ steps.result.outputs.workflow_matched }}
+
+  execution-mode:
+    description: Modo de ejecución de esta acción.
+    value: dummy
 
 runs:
   using: composite
