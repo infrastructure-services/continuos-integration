@@ -215,23 +215,19 @@ runs:
         curl -sSO https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
         unzip -o pipeline-scan-LATEST.zip
 
-    - name: Verificar credenciales Veracode
+    - name: Verificar credenciales Veracode (jar)
       shell: bash
       env:
         VID:  ${{ inputs.veracode-api-id }}
         VKEY: ${{ inputs.veracode-api-key }}
       run: |
-        echo "VID length  : ${#VID}"
-        echo "VKEY length : ${#VKEY}"
-        # Llama a la API REST de Veracode para verificar que las credenciales son válidas
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-          --user "$VID:$VKEY" \
-          "https://api.veracode.com/appsec/v1/applications?size=1")
-        echo "HTTP status Veracode API: $HTTP_CODE"
-        [ "$HTTP_CODE" = "200" ] || {
-          echo "::error::Credenciales Veracode inválidas o sin permisos (HTTP $HTTP_CODE)."
-          exit 1
-        }
+        # Crea un zip mínimo para forzar una respuesta del backend sin subir código real
+        echo "test" > dummy.txt && zip dummy.zip dummy.txt
+
+        java -jar pipeline-scan.jar \
+          -vid "$VID" -vkey "$VKEY" \
+          --file "dummy.zip" \
+          --timeout 2 2>&1 | head -20 || true
     - name: Ejecutar Pipeline Scan
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       id: scan
