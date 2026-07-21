@@ -27,7 +27,7 @@ inputs:
     required: true
 
   solution:
-    description: Ruta de la solución .sln. Si está vacío se auto-detecta (glob *.sln).
+    description: Ruta de la solución .sln o .slnx. Si está vacío se auto-detecta.
     required: false
     default: ''
 
@@ -112,9 +112,6 @@ runs:
         echo "Es workflow .NET    : $IS_DOTNET"
 
     # ── BUILD + PACKAGE ────────────────────────────────────────
-    # Setup .NET + autenticación NuGet en un solo step: evita registrar el feed
-    # dos veces (source-url de setup-dotnet + dotnet nuget add source = error de source duplicado).
-    # NUGET_AUTH_TOKEN es el mecanismo oficial; no requiere --store-password-in-clear-text.
     - name: Setup .NET
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       uses: actions/setup-dotnet@v4
@@ -129,7 +126,7 @@ runs:
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln') }}
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln', '**/*.slnx') }}
         restore-keys: nuget-${{ runner.os }}-
 
     - name: Detectar solución
@@ -143,8 +140,12 @@ runs:
         if [[ -n "$INPUT_SOLUTION" ]]; then
           SLN="$INPUT_SOLUTION"
         else
-          SLN="$(find . -maxdepth 3 -name '*.sln' | head -1)"
-          [[ -n "$SLN" ]] || { echo "::error::No se encontró ningún .sln. Especificá el input 'solution'."; exit 1; }
+          # Busca primero .slnx (formato nuevo .NET 10+), luego .sln (formato clásico).
+          SLN="$(find . -maxdepth 3 \( -name '*.slnx' -o -name '*.sln' \) | head -1)"
+          [[ -n "$SLN" ]] || {
+            echo "::error::No se encontró ningún .sln ni .slnx. Especificá el input 'solution'."
+            exit 1
+          }
         fi
         echo "sln=$SLN" >> "$GITHUB_OUTPUT"
         echo "Solución a compilar: $SLN"
@@ -343,8 +344,6 @@ runs:
             exit 1
             ;;
           skipped)
-            # El scan fue skipped porque un step previo falló (ej: build/NuGet).
-            # Ese step ya marcó el job en rojo; no agregar un mensaje engañoso sobre Veracode.
             echo "::warning::Pipeline Scan fue skipped — revisá los logs del build."
             exit 0
             ;;
