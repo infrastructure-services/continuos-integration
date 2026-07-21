@@ -1,214 +1,373 @@
 name: Andreani Veracode DevSecOps
-description: Build genérico .NET, Pipeline Scan, SARIF, gate de PR, Upload-and-Scan y policy gate.
+description: Build .NET, Pipeline Scan, SARIF, gate de PR y PR comment — composite action real.
 
 inputs:
-  workflow: 
-    description: "nombre del workflow a ejecutar"
+  project:
+    description: Prefijo del proyecto (vars.PROJECT). Se combina con appname para formar el app name en Veracode.
     required: true
-    
+
   appname:
-    description: Valor de APPNAME. Se combina con PROJECT para formar PROJECT_APPNAME.
+    description: Nombre de la aplicación (vars.APPNAME).
+    required: true
+
+  workflow:
+    description: "Nombre del workflow a ejecutar. Valores soportados: '.NET', '.NET 8', '.NET 10'."
+    required: true
+
+  veracode-api-id:
+    description: API ID de Veracode (VID).
+    required: true
+
+  veracode-api-key:
+    description: API Key de Veracode (VKEY).
+    required: true
+
+  github_username:
+    description: Usuario para el feed privado de GitHub Packages (NuGet).
+    required: false
+    default: ''
+
+  github_token:
+    description: Token para el feed privado de GitHub Packages (NuGet) y para comentar PRs.
     required: true
 
   solution:
-    description: Ruta opcional de la solución. Solo es necesaria si el repositorio contiene más de una solución.
+    description: Ruta de la solución .sln. Si está vacío se auto-detecta (glob *.sln).
     required: false
     default: ''
 
   dotnet-version:
-    description: SDK de respaldo cuando el repositorio no contiene global.json.
+    description: Versión del SDK .NET de respaldo (si no hay global.json).
     required: false
     default: '8.0.x'
 
-  veracode-api-id:
-    description: API ID de Veracode.
-    required: true
+  nuget-feed-url:
+    description: URL del feed privado de NuGet.
+    required: false
+    default: 'https://nuget.pkg.github.com/architecture-it/index.json'
 
-  veracode-api-key:
-    description: API Key de Veracode.
-    required: true
-
-  nuget-user:
-    description: Usuario opcional del feed privado de GitHub Packages.
+  first-party-prefix:
+    description: Prefijo de los ensamblados propios del repo que se empaquetan para Veracode.
     required: false
     default: ''
 
-  nuget-token:
-    description: Token opcional del feed privado de GitHub Packages.
+  fail-on-severity:
+    description: Severidades que bloquean el merge en el Pipeline Scan.
     required: false
-    default: ''
-  
+    default: 'Very High, High, Medium'
+
+  scan-timeout:
+    description: Tiempo máximo (minutos) que el jar de Veracode espera respuesta del backend.
+    required: false
+    default: '25'
+
 outputs:
   veracode-app-name:
-    description: Nombre final de la aplicación en Veracode.
+    description: Nombre final de la aplicación en Veracode (PROJECT_APPNAME).
     value: ${{ steps.configuration.outputs.veracode_app_name }}
 
   workflow-matched:
-    description: Indica si el workflow solicitado fue reconocido.
+    description: Indica si el workflow solicitado fue reconocido y ejecutado.
     value: ${{ steps.result.outputs.workflow_matched }}
-
-  execution-mode:
-    description: Modo de ejecución de esta acción.
-    value: dummy
 
 runs:
   using: composite
 
   steps:
-    - name: Inicializar simulación
+
+    # ── CONFIGURACIÓN INICIAL ──────────────────────────────────
+    - name: Configuración inicial
       id: configuration
       shell: bash
       env:
         INPUT_WORKFLOW: ${{ inputs.workflow }}
-        INPUT_PROJECT: ${{ inputs.project }}
-        INPUT_APPNAME: ${{ inputs.appname }}
+        INPUT_PROJECT:  ${{ inputs.project }}
+        INPUT_APPNAME:  ${{ inputs.appname }}
       run: |
         set -Eeuo pipefail
 
         trim() {
-          local value="$1"
-
-          value="${value#"${value%%[![:space:]]*}"}"
-          value="${value%"${value##*[![:space:]]}"}"
-
-          printf '%s' "$value"
+          local v="$1"
+          v="${v#"${v%%[![:space:]]*}"}"
+          v="${v%"${v##*[![:space:]]}"}"
+          printf '%s' "$v"
         }
 
         WORKFLOW="$(trim "$INPUT_WORKFLOW")"
         PROJECT="$(trim "$INPUT_PROJECT")"
         APPNAME="$(trim "$INPUT_APPNAME")"
 
-        if [[ -z "$WORKFLOW" ]]; then
-          echo "::error::El input 'workflow' está vacío."
-          exit 1
-        fi
-
-        if [[ -z "$PROJECT" ]]; then
-          echo "::error::El input 'project' está vacío. Validar vars.PROJECT."
-          exit 1
-        fi
-
-        if [[ -z "$APPNAME" ]]; then
-          echo "::error::El input 'appname' está vacío. Validar vars.APPNAME."
-          exit 1
-        fi
+        [[ -n "$WORKFLOW" ]] || { echo "::error::El input 'workflow' está vacío."; exit 1; }
+        [[ -n "$PROJECT"  ]] || { echo "::error::El input 'project' está vacío. Validar vars.PROJECT."; exit 1; }
+        [[ -n "$APPNAME"  ]] || { echo "::error::El input 'appname' está vacío. Validar vars.APPNAME."; exit 1; }
 
         VERACODE_APP_NAME="${PROJECT}_${APPNAME}"
 
-        echo "WORKFLOW_MATCHED=false" >> "$GITHUB_ENV"
-        echo "DUMMY_WORKFLOW=$WORKFLOW" >> "$GITHUB_ENV"
-        echo "DUMMY_VERACODE_APP_NAME=$VERACODE_APP_NAME" >> "$GITHUB_ENV"
+        # Normalizar: ¿es un workflow .NET soportado?
+        IS_DOTNET="false"
+        case "$WORKFLOW" in
+          ".NET"|".NET 8"|".NET 10") IS_DOTNET="true" ;;
+        esac
 
-        echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
         echo "veracode_app_name=$VERACODE_APP_NAME" >> "$GITHUB_OUTPUT"
+        echo "workflow=$WORKFLOW"                   >> "$GITHUB_OUTPUT"
+        echo "is_dotnet=$IS_DOTNET"                 >> "$GITHUB_OUTPUT"
 
-        echo "Modo dummy activo."
-        echo "Workflow solicitado: $WORKFLOW"
-        echo "Nombre Veracode calculado: $VERACODE_APP_NAME"
+        echo "Workflow solicitado : $WORKFLOW"
+        echo "App name Veracode   : $VERACODE_APP_NAME"
+        echo "Es workflow .NET    : $IS_DOTNET"
 
-    - name: Simular Check Application
-      shell: bash
-      run: |
-        set -Eeuo pipefail
+    # ── BUILD + PACKAGE ────────────────────────────────────────
+    - name: Setup .NET
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
 
-        echo "🧪 [DUMMY] Se simularía:"
-        echo "uses: infrastructure-services/continuos-integration@check-if-exists-app"
-        echo "No se realizó ninguna consulta ni modificación externa."
+    - name: Cache NuGet
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln') }}
+        restore-keys: nuget-${{ runner.os }}-
 
-    - name: Simular Continuous Integration .NET
-      id: dotnet
-      if: ${{ inputs.workflow == '.NET' }}
+    - name: Configurar feed privado NuGet
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && inputs.github_username != '' }}
       shell: bash
       env:
-        SOLUTION: ${{ inputs.solution }}
-        DOTNET_VERSION: ${{ inputs.dotnet-version }}
-
-        HAS_VERACODE_API_ID: ${{ inputs.veracode-api-id != '' }}
-        HAS_VERACODE_API_KEY: ${{ inputs.veracode-api-key != '' }}
-
-        HAS_NUGET_USER: ${{ inputs.nuget-user != '' }}
-        HAS_NUGET_TOKEN: ${{ inputs.nuget-token != '' }}
+        NUGET_USER:  ${{ inputs.github_username }}
+        NUGET_TOKEN: ${{ inputs.github_token }}
+        FEED_URL:    ${{ inputs.nuget-feed-url }}
       run: |
         set -Eeuo pipefail
+        dotnet nuget add source "$FEED_URL" \
+          --name architecture-it \
+          --username "$NUGET_USER" \
+          --password "$NUGET_TOKEN" \
+          --store-password-in-clear-text
+        echo "Feed NuGet privado configurado: $FEED_URL"
 
-        echo "WORKFLOW_MATCHED=true" >> "$GITHUB_ENV"
-        echo "workflow_matched=true" >> "$GITHUB_OUTPUT"
-
-        if [[ -n "$SOLUTION" ]]; then
-          SOLUTION_DESCRIPTION="$SOLUTION"
+    - name: Detectar solución
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      id: solution
+      shell: bash
+      env:
+        INPUT_SOLUTION: ${{ inputs.solution }}
+      run: |
+        set -Eeuo pipefail
+        if [[ -n "$INPUT_SOLUTION" ]]; then
+          SLN="$INPUT_SOLUTION"
         else
-          SOLUTION_DESCRIPTION="detección automática"
+          SLN="$(find . -maxdepth 3 -name '*.sln' | head -1)"
+          [[ -n "$SLN" ]] || { echo "::error::No se encontró ningún .sln. Especificá el input 'solution'."; exit 1; }
+        fi
+        echo "sln=$SLN" >> "$GITHUB_OUTPUT"
+        echo "Solución a compilar: $SLN"
+
+    - name: Restore
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      shell: bash
+      env:
+        SLN: ${{ steps.solution.outputs.sln }}
+      run: |
+        set -Eeuo pipefail
+        dotnet restore "$SLN"
+
+    - name: Publish (Release)
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      shell: bash
+      env:
+        SLN: ${{ steps.solution.outputs.sln }}
+      run: |
+        set -Eeuo pipefail
+        dotnet publish "$SLN" -c Release -o publish --no-restore -p:UseAppHost=false
+
+    - name: Empaquetar para Veracode
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      id: package
+      shell: bash
+      env:
+        FIRST_PARTY_PREFIX: ${{ inputs.first-party-prefix }}
+      run: |
+        set -Eeuo pipefail
+        mkdir -p pkg
+
+        if [[ -n "$FIRST_PARTY_PREFIX" ]]; then
+          cp publish/${FIRST_PARTY_PREFIX}*.dll pkg/ 2>/dev/null || true
+          cp publish/${FIRST_PARTY_PREFIX}*.pdb pkg/ 2>/dev/null || true
+        else
+          cp publish/*.dll pkg/ 2>/dev/null || true
+          cp publish/*.pdb pkg/ 2>/dev/null || true
         fi
 
-        echo "🧪 [DUMMY] Coincidencia encontrada para workflow=.NET"
-        echo "🧪 [DUMMY] No se ejecutará cicdv3-net-8."
-        echo "🧪 [DUMMY] Solución: $SOLUTION_DESCRIPTION"
-        echo "🧪 [DUMMY] .NET: $DOTNET_VERSION"
-        echo "🧪 [DUMMY] Application name: $DUMMY_VERACODE_APP_NAME"
+        COUNT=$(find pkg -name '*.dll' | wc -l)
+        echo "Contenido del paquete ($COUNT dll):"
+        ls -1 pkg
 
-        echo "🧪 [DUMMY] Veracode API ID configurado: $HAS_VERACODE_API_ID"
-        echo "🧪 [DUMMY] Veracode API Key configurada: $HAS_VERACODE_API_KEY"
+        [ "$COUNT" -ge 1 ] || {
+          echo "::error::Paquete vacío. Revisá el input 'first-party-prefix' o el directorio publish/."
+          exit 1
+        }
 
-        echo "🧪 [DUMMY] NuGet user configurado: $HAS_NUGET_USER"
-        echo "🧪 [DUMMY] NuGet token configurado: $HAS_NUGET_TOKEN"
+        cd pkg && zip -r ../veracode-package.zip . && cd ..
+        echo "Tamaño del paquete:"; du -h veracode-package.zip
+        echo "pkg_ready=true" >> "$GITHUB_OUTPUT"
 
-        {
-          echo "## 🧪 Simulación Continuous Integration .NET"
-          echo
-          echo "| Configuración | Valor |"
-          echo "|---|---|"
-          echo "| Modo | Dummy / sin efectos externos |"
-          echo "| Workflow | \`.NET\` |"
-          echo "| Aplicación Veracode | \`$DUMMY_VERACODE_APP_NAME\` |"
-          echo "| Solución | \`$SOLUTION_DESCRIPTION\` |"
-          echo "| .NET | \`$DOTNET_VERSION\` |"
-          echo "| Veracode API ID informado | \`$HAS_VERACODE_API_ID\` |"
-          echo "| Veracode API Key informada | \`$HAS_VERACODE_API_KEY\` |"
-          echo "| NuGet user informado | \`$HAS_NUGET_USER\` |"
-          echo "| NuGet token informado | \`$HAS_NUGET_TOKEN\` |"
-          echo
-          echo "### Acción que se ejecutaría en producción"
-          echo
-          echo "\`infrastructure-services/continuos-integration@cicdv3-net-8\`"
-        } >> "$GITHUB_STEP_SUMMARY"
+    # ── PR SCAN ────────────────────────────────────────────────
+    - name: Setup JDK 11
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'temurin'
 
-    - name: Validar workflow soportado
-      if: ${{ env.WORKFLOW_MATCHED != 'true' }}
+    - name: Descargar Pipeline Scanner
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       shell: bash
-      env:
-        FAIL_ON_UNSUPPORTED: ${{ inputs.fail-on-unsupported-workflow }}
       run: |
         set -Eeuo pipefail
+        curl -sSO https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
+        unzip -o pipeline-scan-LATEST.zip
+
+    - name: Ejecutar Pipeline Scan
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      id: scan
+      continue-on-error: true
+      shell: bash
+      env:
+        VID:          ${{ inputs.veracode-api-id }}
+        VKEY:         ${{ inputs.veracode-api-key }}
+        FAIL_ON_SEV:  ${{ inputs.fail-on-severity }}
+        SCAN_TIMEOUT: ${{ inputs.scan-timeout }}
+      run: |
+        set -Eeuo pipefail
+        BASELINE=()
+        if [ -f veracode-baseline.json ]; then
+          BASELINE=(--baseline_file veracode-baseline.json)
+          echo "[INFO] Baseline presente -> gatea solo findings NUEVOS del PR."
+        else
+          echo "[INFO] Sin baseline -> gatea TODOS los findings (primera corrida)."
+        fi
+
+        java -jar pipeline-scan.jar \
+          -vid "$VID" -vkey "$VKEY" \
+          --file "veracode-package.zip" \
+          --project_name "$GITHUB_REPOSITORY" \
+          --project_url "https://github.com/$GITHUB_REPOSITORY" \
+          --json_output_file results.json \
+          --filtered_json_output_file filtered_results.json \
+          --timeout "$SCAN_TIMEOUT" \
+          "${BASELINE[@]}" \
+          --fail_on_severity "$FAIL_ON_SEV"
+
+    - name: Convertir resultados a SARIF
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      continue-on-error: true
+      uses: veracode/veracode-pipeline-scan-results-to-sarif@v2.0.5
+      with:
+        pipeline-results-json: results.json
+        noupload: 'true'
+
+    - name: Publicar SARIF en la pestaña Security
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: veracode-results.sarif
+        category: veracode-pipeline-scan
+
+    - name: Guardar resultados como artifact
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: veracode-pipeline-results
+        path: |
+          results.json
+          filtered_results.json
+          veracode-results.sarif
+
+    - name: Comentar findings en el PR
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      shell: bash
+      env:
+        GH_TOKEN:  ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
+      run: |
+        [ -f filtered_results.json ] || { echo "sin filtered_results.json"; exit 0; }
+
+        SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
+        blocking=$(jq '[.findings[]?] | length' filtered_results.json)
+        total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
+        accepted=$(( total - blocking ))
 
         {
-          echo "## ⚠️ Workflow no reconocido"
-          echo
-          echo "El valor recibido fue: \`$DUMMY_WORKFLOW\`"
-          echo
-          echo "Workflows soportados actualmente:"
-          echo
-          echo "- \`.NET\`"
-        } >> "$GITHUB_STEP_SUMMARY"
+          echo "## 🛡️ Veracode Pipeline Scan — $blocking bloqueante(s), $accepted aceptado(s) por baseline"
+          echo ""
+          echo "Gate: \`$FAIL_ON_SEV\` sobre findings **nuevos**. Total detectado: **$total**. Panorama completo en la pestaña **Security** y en el artifact \`veracode-pipeline-results\`."
+          echo ""
+          if [ "$blocking" -gt 0 ]; then
+            echo "### 🔴 Nuevos — bloquean el merge"
+            echo "| Severidad | CWE | Tipo | Ubicación |"
+            echo "|---|---|---|---|"
+            jq -r --argjson sev "$SEVN" '
+              .findings[]? |
+              (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
+              "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+            ' filtered_results.json | head -60
+          else
+            echo "✅ Sin findings **nuevos** en este PR — merge habilitado."
+          fi
+          if [ "$accepted" -gt 0 ]; then
+            echo ""
+            echo "<details><summary>🟡 $accepted aceptado(s) por baseline (no bloquean)</summary>"
+            echo ""
+            echo "| Severidad | CWE | Tipo | Ubicación |"
+            echo "|---|---|---|---|"
+            jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
+              (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
+              | .findings[]?
+              | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
+              | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
+              | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+            ' results.json | head -60
+            echo ""
+            echo "</details>"
+          fi
+        } > pr_comment.md
 
-        if [[ "$FAIL_ON_UNSUPPORTED" == "true" ]]; then
-          echo "::error::Workflow no soportado: '$DUMMY_WORKFLOW'."
+        gh pr comment "$PR_NUMBER" --body-file pr_comment.md || echo "no se pudo comentar el PR (¿permisos?)"
+
+    - name: Aplicar gate
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      shell: bash
+      env:
+        SCAN_OUTCOME: ${{ steps.scan.outcome }}
+      run: |
+        if [ -f filtered_results.json ]; then
+          if [ "$SCAN_OUTCOME" = "success" ]; then
+            echo "✅ Sin findings bloqueantes."; exit 0
+          fi
+          echo "::error::Pipeline Scan encontró findings bloqueantes -> merge bloqueado"
           exit 1
         fi
+        if [ "$SCAN_OUTCOME" = "cancelled" ]; then
+          echo "::error::Pipeline Scan cancelado (job timeout) -> merge bloqueado."
+        else
+          echo "::error::Pipeline Scan sin resultados -> merge bloqueado. Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
+        fi
+        exit 1
 
-        echo "::warning::Workflow no soportado: '$DUMMY_WORKFLOW'."
-
-    - name: Publicar resultado dummy
+    # ── RESULTADO FINAL ────────────────────────────────────────
+    - name: Publicar resultado
       id: result
       if: ${{ always() }}
       shell: bash
+      env:
+        IS_DOTNET: ${{ steps.configuration.outputs.is_dotnet }}
       run: |
         set -Eeuo pipefail
-
-        MATCHED="${WORKFLOW_MATCHED:-false}"
-
+        MATCHED="${IS_DOTNET:-false}"
         echo "workflow_matched=$MATCHED" >> "$GITHUB_OUTPUT"
-
-        echo "Resultado dummy:"
-        echo "  workflow=$DUMMY_WORKFLOW"
-        echo "  workflow_matched=$MATCHED"
-        echo "  veracode_app_name=$DUMMY_VERACODE_APP_NAME"
+        echo "Workflow matched: $MATCHED"
