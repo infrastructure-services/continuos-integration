@@ -214,20 +214,7 @@ runs:
         set -Eeuo pipefail
         curl -sSO https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
         unzip -o pipeline-scan-LATEST.zip
-
-    - name: Verificar credenciales Veracode (jar)
-      shell: bash
-      env:
-        VID:  ${{ inputs.veracode-api-id }}
-        VKEY: ${{ inputs.veracode-api-key }}
-      run: |
-        # Crea un zip mínimo para forzar una respuesta del backend sin subir código real
-        echo "test" > dummy.txt && zip dummy.zip dummy.txt
-
-        java -jar pipeline-scan.jar \
-          -vid "$VID" -vkey "$VKEY" \
-          --file "dummy.zip" \
-          --timeout 2 2>&1 | head -20 || true
+        
     - name: Ejecutar Pipeline Scan
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       id: scan
