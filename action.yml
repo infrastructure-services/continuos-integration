@@ -22,11 +22,6 @@ inputs:
     description: API Key de Veracode (VKEY).
     required: true
 
-  github_username:
-    description: Usuario para el feed privado de GitHub Packages (NuGet).
-    required: false
-    default: ''
-
   github_token:
     description: Token para el feed privado de GitHub Packages (NuGet) y para comentar PRs.
     required: true
@@ -103,7 +98,6 @@ runs:
 
         VERACODE_APP_NAME="${PROJECT}_${APPNAME}"
 
-        # Normalizar: ¿es un workflow .NET soportado?
         IS_DOTNET="false"
         case "$WORKFLOW" in
           ".NET"|".NET 8"|".NET 10") IS_DOTNET="true" ;;
@@ -118,35 +112,25 @@ runs:
         echo "Es workflow .NET    : $IS_DOTNET"
 
     # ── BUILD + PACKAGE ────────────────────────────────────────
+    # Setup .NET + autenticación NuGet en un solo step: evita registrar el feed
+    # dos veces (source-url de setup-dotnet + dotnet nuget add source = error de source duplicado).
+    # NUGET_AUTH_TOKEN es el mecanismo oficial; no requiere --store-password-in-clear-text.
     - name: Setup .NET
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
-      uses: actions/setup-dotnet@v6
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
+        source-url: ${{ inputs.nuget-feed-url }}
+      env:
+        NUGET_AUTH_TOKEN: ${{ inputs.github_token }}
 
     - name: Cache NuGet
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
-      uses: actions/cache@v6
+      uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
         key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln') }}
         restore-keys: nuget-${{ runner.os }}-
-
-    - name: Configurar feed privado NuGet
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && inputs.github_username != '' }}
-      shell: bash
-      env:
-        NUGET_USER:  ${{ inputs.github_username }}
-        NUGET_TOKEN: ${{ inputs.github_token }}
-        FEED_URL:    ${{ inputs.nuget-feed-url }}
-      run: |
-        set -Eeuo pipefail
-        dotnet nuget add source "$FEED_URL" \
-          --name architecture-it \
-          --username "$NUGET_USER" \
-          --password "$NUGET_TOKEN" \
-          --store-password-in-clear-text
-        echo "Feed NuGet privado configurado: $FEED_URL"
 
     - name: Detectar solución
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
@@ -272,14 +256,14 @@ runs:
     - name: Publicar SARIF en la pestaña Security
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
       continue-on-error: true
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: veracode-results.sarif
         category: veracode-pipeline-scan
 
     - name: Guardar resultados como artifact
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@v4
       with:
         name: veracode-pipeline-results
         path: |
@@ -288,11 +272,11 @@ runs:
           veracode-results.sarif
 
     - name: Comentar findings en el PR
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && github.event_name == 'pull_request' && always() }}
       shell: bash
       env:
-        GH_TOKEN:  ${{ inputs.github_token }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN:    ${{ inputs.github_token }}
+        PR_NUMBER:   ${{ github.event.pull_request.number }}
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
       run: |
         [ -f filtered_results.json ] || { echo "sin filtered_results.json"; exit 0; }
@@ -352,12 +336,23 @@ runs:
           echo "::error::Pipeline Scan encontró findings bloqueantes -> merge bloqueado"
           exit 1
         fi
-        if [ "$SCAN_OUTCOME" = "cancelled" ]; then
-          echo "::error::Pipeline Scan cancelado (job timeout) -> merge bloqueado."
-        else
-          echo "::error::Pipeline Scan sin resultados -> merge bloqueado. Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
-        fi
-        exit 1
+
+        case "$SCAN_OUTCOME" in
+          cancelled)
+            echo "::error::Pipeline Scan cancelado (job timeout) -> merge bloqueado."
+            exit 1
+            ;;
+          skipped)
+            # El scan fue skipped porque un step previo falló (ej: build/NuGet).
+            # Ese step ya marcó el job en rojo; no agregar un mensaje engañoso sobre Veracode.
+            echo "::warning::Pipeline Scan fue skipped — revisá los logs del build."
+            exit 0
+            ;;
+          *)
+            echo "::error::Pipeline Scan sin resultados (outcome=$SCAN_OUTCOME) -> merge bloqueado. Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
+            exit 1
+            ;;
+        esac
 
     # ── RESULTADO FINAL ────────────────────────────────────────
     - name: Publicar resultado
