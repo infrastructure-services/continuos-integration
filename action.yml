@@ -117,12 +117,10 @@ runs:
           const fs = require('fs')
           try {
             const jsonString = fs.readFileSync('./package.json', 'utf8');
-            const json = JSON.parse(jsonString);const lint = json.scripts?.lint || '';
+            const json = JSON.parse(jsonString);
+            const lint = json.scripts?.lint || '';
             const test = json.scripts?.test || '';
-            const build = json.scripts?.build || '';
             const extraSlash = '${{ steps.package_manager.outputs.name }}' === 'pnpm' ? '' : '--';
-            
-            return { lint, test, build, extraSlash }
 
             return { lint, test, extraSlash }
           } catch(err) {
@@ -134,7 +132,6 @@ runs:
       shell: bash
       if: ${{ inputs.skip_lint != 'true' && fromJson(steps.package.outputs.result).lint != '' }}
     - name: Build
-      if: ${{ fromJson(steps.package.outputs.result).build != '' }}
       run: ${{ steps.package_manager.outputs.name }} run build
       shell: bash
       env:
