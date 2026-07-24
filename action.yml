@@ -1,5 +1,5 @@
 name: Andreani Veracode DevSecOps
-description: Build .NET, Pipeline Scan, SARIF, gate de PR y PR comment / Job Summary — composite action real.
+description: Build .NET, Pipeline Scan (SAST), Veracode SCA, SARIF, gate de PR, PR comment y Job Summary.
 
 inputs:
   project:
@@ -22,8 +22,13 @@ inputs:
     description: API Key de Veracode (VKEY).
     required: true
 
+  srcclr-api-token:
+    description: Token de API de Veracode SRCCLR para el scanner de SCA.
+    required: false
+    default: ''
+
   github_token:
-    description: Token para el feed privado de GitHub Packages (NuGet) y para comentar PRs.
+    description: Token para el feed privado de GitHub Packages (NuGet), listar issues y comentar PRs.
     required: true
 
   solution:
@@ -198,7 +203,7 @@ runs:
         echo "Tamaño del paquete:"; du -h veracode-package.zip
         echo "pkg_ready=true" >> "$GITHUB_OUTPUT"
 
-    # ── PR / PUSH SCAN ────────────────────────────────────────
+    # ── SAST SCAN (PIPELINE SCAN) ──────────────────────────────
     - name: Setup JDK 11
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       uses: actions/setup-java@v4
@@ -271,7 +276,20 @@ runs:
           filtered_results.json
           veracode-results.sarif
 
-    # ── COMENTAR EN PR (Solo si el evento es pull_request) ───────
+    # ── SCA SCAN (AGENT-BASED) ─────────────────────────────────
+    - name: Veracode SCA (Agent-Based)
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && inputs.srcclr-api-token != '' && always() }}
+      id: sca
+      continue-on-error: true
+      env:
+        SRCCLR_API_TOKEN: ${{ inputs.srcclr-api-token }}
+      uses: veracode/veracode-sca@01bdc0cbd6b4990e93519deedc5140e5ff48b98e # v2.1.19
+      with:
+        github_token: ${{ inputs.github_token }}
+        create-issues: true
+        quick: false
+
+    # ── COMENTAR EN PR (Unificado SAST + SCA) ──────────────────
     - name: Comentar findings en el PR
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' && github.event_name == 'pull_request' && always() }}
       shell: bash
@@ -279,109 +297,201 @@ runs:
         GH_TOKEN:    ${{ inputs.github_token }}
         PR_NUMBER:   ${{ github.event.pull_request.number }}
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
+        SCA_URL:     ${{ steps.sca.outputs.scan-url }}
+        SCA_OUTCOME: ${{ steps.sca.outcome }}
       run: |
-        [ -f filtered_results.json ] || { echo "sin filtered_results.json"; exit 0; }
-
         SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
-        blocking=$(jq '[.findings[]?] | length' filtered_results.json)
-        total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
-        accepted=$(( total - blocking ))
-
+        
+        # 1. Reporte SAST
         {
-          echo "## 🛡️ Veracode Pipeline Scan — $blocking bloqueante(s), $accepted aceptado(s) por baseline"
-          echo ""
-          echo "Gate: \`$FAIL_ON_SEV\` sobre findings **nuevos**. Total detectado: **$total**. Panorama completo en la pestaña **Security** y en el artifact \`veracode-pipeline-results\`."
-          echo ""
-          if [ "$blocking" -gt 0 ]; then
-            echo "### 🔴 Nuevos — bloquean el merge"
+          if [ -f filtered_results.json ]; then
+            blocking=$(jq '[.findings[]?] | length' filtered_results.json)
+            total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
+            accepted=$(( total - blocking ))
+
+            echo "## 🛡️ Veracode Pipeline Scan (SAST) — $blocking bloqueante(s), $accepted aceptado(s) por baseline"
             echo ""
-            echo "| Severidad | CWE | Tipo | Ubicación |"
-            echo "|---|---|---|---|"
-            jq -r --argjson sev "$SEVN" '
-              .findings[]? |
-              (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
-              "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-            ' filtered_results.json | head -60
+            echo "Gate: \`$FAIL_ON_SEV\` sobre findings **nuevos**. Total detectado: **$total**."
             echo ""
-          else
-            echo "✅ Sin findings **nuevos** en este PR — merge habilitado."
-            echo ""
+            if [ "$blocking" -gt 0 ]; then
+              echo "### 🔴 Nuevos — bloquean el merge"
+              echo ""
+              echo "| Severidad | CWE | Tipo | Ubicación |"
+              echo "|---|---|---|---|"
+              jq -r --argjson sev "$SEVN" '
+                .findings[]? |
+                (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
+                "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+              ' filtered_results.json | head -60
+              echo ""
+            else
+              echo "✅ Sin findings **nuevos** en este PR — merge habilitado."
+              echo ""
+            fi
+            if [ "$accepted" -gt 0 ]; then
+              echo ""
+              echo "<details>"
+              echo "<summary>🟡 $accepted aceptado(s) por baseline (no bloquean)</summary>"
+              echo ""
+              echo "| Severidad | CWE | Tipo | Ubicación |"
+              echo "|---|---|---|---|"
+              jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
+                (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
+                | .findings[]?
+                | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
+                | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
+                | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+              ' results.json | head -60
+              echo ""
+              echo "</details>"
+              echo ""
+            fi
           fi
-          if [ "$accepted" -gt 0 ]; then
+
+          # 2. Reporte SCA
+          if [ -n "$SCA_OUTCOME" ] && [ "$SCA_OUTCOME" != "skipped" ]; then
+            if [ "$SCA_OUTCOME" != "success" ] && [ -z "$SCA_URL" ]; then
+              VERD="⚠️ Error de scan — no se completó (revisar SRCCLR_API_TOKEN)"
+            else
+              CNT=$(gh issue list -R "$GITHUB_REPOSITORY" --label "Veracode Dependency Scanning" --state open --json number --jq 'length' 2>/dev/null || echo "?")
+              case "$CNT" in
+                0)   VERD="✅ Sin dependencias vulnerables abiertas" ;;
+                "?") VERD="ℹ️ Ver Issues (no pude contar)" ;;
+                *)   VERD="🟠 $CNT dependencia(s) vulnerable(s) abierta(s) — ver Issues" ;;
+              esac
+            fi
+
+            echo "---"
+            echo "## 📦 Veracode **SCA** — dependencias vulnerables"
             echo ""
-            echo "<details>"
-            echo "<summary>🟡 $accepted aceptado(s) por baseline (no bloquean)</summary>"
+            echo "Escaneo agent-based del árbol de dependencias (**no** es SAST). Estado: $VERD."
             echo ""
-            echo "| Severidad | CWE | Tipo | Ubicación |"
-            echo "|---|---|---|---|"
-            jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
-              (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
-              | .findings[]?
-              | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
-              | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
-              | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-            ' results.json | head -60
-            echo ""
-            echo "</details>"
-            echo ""
+            echo "- Reporte completo: ${SCA_URL:-'(ver el log del job — sin url expuesta)'}"
+            echo "- Detalle por vulnerabilidad: [Issues con label \`Veracode Dependency Scanning\`](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)."
           fi
         } > pr_comment.md
 
-        gh pr comment "$PR_NUMBER" --body-file pr_comment.md || echo "no se pudo comentar el PR (¿permisos?)"
+        gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body-file pr_comment.md || echo "no se pudo comentar el PR"
 
-    # ── GENERAR SUMMARY EN EL JOB (Solo si NO es pull_request) ───
+    # ── GENERAR SUMMARY EN EL JOB (Unificado SAST + SCA) ─────────
     - name: Generar Job Summary
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' && github.event_name != 'pull_request' && always() }}
       shell: bash
       env:
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
+        SCA_URL:     ${{ steps.sca.outputs.scan-url }}
+        SCA_OUTCOME: ${{ steps.sca.outcome }}
       run: |
-        if [ ! -f filtered_results.json ]; then
-          echo "⚠️ Sin resultados de análisis disponibles." >> "$GITHUB_STEP_SUMMARY"
-          exit 0
-        fi
-
         SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
-        blocking=$(jq '[.findings[]?] | length' filtered_results.json)
-        total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
-        accepted=$(( total - blocking ))
 
         {
-          echo "## 🛡️ Veracode Pipeline Scan — Resumen de Ejecución (\`${GITHUB_REF_NAME}\`)"
-          echo ""
-          echo "Gate configurado: \`$FAIL_ON_SEV\` | Total detectado: **$total** (**$blocking** bloqueante(s), **$accepted** aceptado(s) por baseline)."
-          echo ""
-          if [ "$blocking" -gt 0 ]; then
-            echo "### 🔴 Findings bloqueantes"
+          # 1. Reporte SAST
+          if [ -f filtered_results.json ]; then
+            blocking=$(jq '[.findings[]?] | length' filtered_results.json)
+            total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
+            accepted=$(( total - blocking ))
+
+            echo "## 🛡️ Veracode Pipeline Scan (SAST) — Resumen de Ejecución (\`${GITHUB_REF_NAME}\`)"
             echo ""
-            echo "| Severidad | CWE | Tipo | Ubicación |"
-            echo "|---|---|---|---|"
-            jq -r --argjson sev "$SEVN" '
-              .findings[]? |
-              (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
-              "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-            ' filtered_results.json | head -60
+            echo "Gate configurado: \`$FAIL_ON_SEV\` | Total detectado: **$total** (**$blocking** bloqueante(s), **$accepted** aceptado(s) por baseline)."
             echo ""
-          else
-            echo "✅ **Sin vulnerabilidades bloqueantes en esta rama.**"
-            echo ""
+            if [ "$blocking" -gt 0 ]; then
+              echo "### 🔴 Findings bloqueantes"
+              echo ""
+              echo "| Severidad | CWE | Tipo | Ubicación |"
+              echo "|---|---|---|---|"
+              jq -r --argjson sev "$SEVN" '
+                .findings[]? |
+                (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
+                "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+              ' filtered_results.json | head -60
+              echo ""
+            else
+              echo "✅ **Sin vulnerabilidades bloqueantes en esta rama.**"
+              echo ""
+            fi
+            if [ "$accepted" -gt 0 ]; then
+              echo ""
+              echo "<details>"
+              echo "<summary>🟡 $accepted aceptado(s) por baseline</summary>"
+              echo ""
+              echo "| Severidad | CWE | Tipo | Ubicación |"
+              echo "|---|---|---|---|"
+              jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
+                (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
+                | .findings[]?
+                | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
+                | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
+                | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+              ' results.json | head -60
+              echo ""
+              echo "</details>"
+              echo ""
+            fi
           fi
-          if [ "$accepted" -gt 0 ]; then
+
+          # 2. Reporte SCA
+          if [ -n "$SCA_OUTCOME" ] && [ "$SCA_OUTCOME" != "skipped" ]; then
+            if [ "$SCA_OUTCOME" != "success" ] && [ -z "$SCA_URL" ]; then
+              VERD="⚠️ Error de scan — no se completó (revisar SRCCLR_API_TOKEN)"
+            else
+              CNT=$(gh issue list -R "$GITHUB_REPOSITORY" --label "Veracode Dependency Scanning" --state open --json number --jq 'length' 2>/dev/null || echo "?")
+              case "$CNT" in
+                0)   VERD="✅ Sin dependencias vulnerables abiertas" ;;
+                "?") VERD="ℹ️ Ver Issues (no pude contar)" ;;
+                *)   VERD="🟠 $CNT dependencia(s) vulnerable(s) abierta(s) — ver Issues" ;;
+              esac
+            fi
+
+            echo "---"
+            echo "## 📦 Veracode **SCA** — dependencias vulnerables"
             echo ""
-            echo "<details>"
-            echo "<summary>🟡 $accepted aceptado(s) por baseline</summary>"
+            echo "Escaneo agent-based del árbol de dependencias (**no** es SAST). Estado: $VERD."
             echo ""
-            echo "| Severidad | CWE | Tipo | Ubicación |"
-            echo "|---|---|---|---|"
-            jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
-              (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
-              | .findings[]?
-              | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
-              | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
-              | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-            ' results.json | head -60
-            echo ""
-            echo "</details>"
-            echo ""
+            echo "- Reporte completo: ${SCA_URL:-'(ver el log del job — sin url expuesta)'}"
+            echo "- Detalle por vulnerabilidad: [Issues con label \`Veracode Dependency Scanning\`](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)."
           fi
         } >> "$GITHUB_STEP_SUMMARY"
+
+    # ── APLICAR GATE ───────────────────────────────────────────
+    - name: Aplicar gate
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      shell: bash
+      env:
+        SCAN_OUTCOME: ${{ steps.scan.outcome }}
+      run: |
+        if [ -f filtered_results.json ]; then
+          if [ "$SCAN_OUTCOME" = "success" ]; then
+            echo "✅ Sin findings bloqueantes."; exit 0
+          fi
+          echo "::error::Pipeline Scan encontró findings bloqueantes."
+          exit 1
+        fi
+
+        case "$SCAN_OUTCOME" in
+          cancelled)
+            echo "::error::Pipeline Scan cancelado (job timeout)."
+            exit 1
+            ;;
+          skipped)
+            echo "::warning::Pipeline Scan fue skipped — revisá los logs del build."
+            exit 0
+            ;;
+          *)
+            echo "::error::Pipeline Scan sin resultados (outcome=$SCAN_OUTCOME). Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
+            exit 1
+            ;;
+        esac
+
+    # ── RESULTADO FINAL ────────────────────────────────────────
+    - name: Publicar resultado
+      id: result
+      if: ${{ always() }}
+      shell: bash
+      env:
+        IS_DOTNET: ${{ steps.configuration.outputs.is_dotnet }}
+      run: |
+        set -Eeuo pipefail
+        MATCHED="${IS_DOTNET:-false}"
+        echo "workflow_matched=$MATCHED" >> "$GITHUB_OUTPUT"
+        echo "Workflow matched: $MATCHED"
