@@ -140,7 +140,6 @@ runs:
         if [[ -n "$INPUT_SOLUTION" ]]; then
           SLN="$INPUT_SOLUTION"
         else
-          # Busca primero .slnx (formato nuevo .NET 10+), luego .sln (formato clásico).
           SLN="$(find . -maxdepth 3 \( -name '*.slnx' -o -name '*.sln' \) | head -1)"
           [[ -n "$SLN" ]] || {
             echo "::error::No se encontró ningún .sln ni .slnx. Especificá el input 'solution'."
@@ -199,7 +198,7 @@ runs:
         echo "Tamaño del paquete:"; du -h veracode-package.zip
         echo "pkg_ready=true" >> "$GITHUB_OUTPUT"
 
-    # ── PR SCAN ────────────────────────────────────────────────
+    # ── PR / PUSH SCAN ────────────────────────────────────────
     - name: Setup JDK 11
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       uses: actions/setup-java@v4
@@ -230,9 +229,9 @@ runs:
         BASELINE=()
         if [ -f veracode-baseline.json ]; then
           BASELINE=(--baseline_file veracode-baseline.json)
-          echo "[INFO] Baseline presente -> gatea solo findings NUEVOS del PR."
+          echo "[INFO] Baseline presente -> evalúa deltas."
         else
-          echo "[INFO] Sin baseline -> gatea TODOS los findings (primera corrida)."
+          echo "[INFO] Sin baseline -> evalúa TODOS los findings."
         fi
 
         java -jar pipeline-scan.jar \
@@ -272,6 +271,7 @@ runs:
           filtered_results.json
           veracode-results.sarif
 
+    # ── COMENTAR EN PR (Solo si el evento es pull_request) ───────
     - name: Comentar findings en el PR
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' && github.event_name == 'pull_request' && always() }}
       shell: bash
@@ -324,6 +324,7 @@ runs:
 
         gh pr comment "$PR_NUMBER" --body-file pr_comment.md || echo "no se pudo comentar el PR (¿permisos?)"
 
+    # ── APLICAR GATE ───────────────────────────────────────────
     - name: Aplicar gate
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
       shell: bash
@@ -334,13 +335,13 @@ runs:
           if [ "$SCAN_OUTCOME" = "success" ]; then
             echo "✅ Sin findings bloqueantes."; exit 0
           fi
-          echo "::error::Pipeline Scan encontró findings bloqueantes -> merge bloqueado"
+          echo "::error::Pipeline Scan encontró findings bloqueantes."
           exit 1
         fi
 
         case "$SCAN_OUTCOME" in
           cancelled)
-            echo "::error::Pipeline Scan cancelado (job timeout) -> merge bloqueado."
+            echo "::error::Pipeline Scan cancelado (job timeout)."
             exit 1
             ;;
           skipped)
@@ -348,7 +349,7 @@ runs:
             exit 0
             ;;
           *)
-            echo "::error::Pipeline Scan sin resultados (outcome=$SCAN_OUTCOME) -> merge bloqueado. Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
+            echo "::error::Pipeline Scan sin resultados (outcome=$SCAN_OUTCOME). Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
             exit 1
             ;;
         esac
