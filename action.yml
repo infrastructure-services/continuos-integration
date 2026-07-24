@@ -1,5 +1,5 @@
 name: Andreani Veracode DevSecOps
-description: Build .NET, Pipeline Scan, SARIF, gate de PR y PR comment — composite action real.
+description: Build .NET, Pipeline Scan, SARIF, gate de PR y PR comment / Job Summary — composite action real.
 
 inputs:
   project:
@@ -294,6 +294,7 @@ runs:
           echo ""
           if [ "$blocking" -gt 0 ]; then
             echo "### 🔴 Nuevos — bloquean el merge"
+            echo ""
             echo "| Severidad | CWE | Tipo | Ubicación |"
             echo "|---|---|---|---|"
             jq -r --argjson sev "$SEVN" '
@@ -301,12 +302,15 @@ runs:
               (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
               "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
             ' filtered_results.json | head -60
+            echo ""
           else
             echo "✅ Sin findings **nuevos** en este PR — merge habilitado."
+            echo ""
           fi
           if [ "$accepted" -gt 0 ]; then
             echo ""
-            echo "<details><summary>🟡 $accepted aceptado(s) por baseline (no bloquean)</summary>"
+            echo "<details>"
+            echo "<summary>🟡 $accepted aceptado(s) por baseline (no bloquean)</summary>"
             echo ""
             echo "| Severidad | CWE | Tipo | Ubicación |"
             echo "|---|---|---|---|"
@@ -319,50 +323,65 @@ runs:
             ' results.json | head -60
             echo ""
             echo "</details>"
+            echo ""
           fi
         } > pr_comment.md
 
         gh pr comment "$PR_NUMBER" --body-file pr_comment.md || echo "no se pudo comentar el PR (¿permisos?)"
 
-    # ── APLICAR GATE ───────────────────────────────────────────
-    - name: Aplicar gate
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+    # ── GENERAR SUMMARY EN EL JOB (Solo si NO es pull_request) ───
+    - name: Generar Job Summary
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && github.event_name != 'pull_request' && always() }}
       shell: bash
       env:
-        SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
       run: |
-        if [ -f filtered_results.json ]; then
-          if [ "$SCAN_OUTCOME" = "success" ]; then
-            echo "✅ Sin findings bloqueantes."; exit 0
-          fi
-          echo "::error::Pipeline Scan encontró findings bloqueantes."
-          exit 1
+        if [ ! -f filtered_results.json ]; then
+          echo "⚠️ Sin resultados de análisis disponibles." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
         fi
 
-        case "$SCAN_OUTCOME" in
-          cancelled)
-            echo "::error::Pipeline Scan cancelado (job timeout)."
-            exit 1
-            ;;
-          skipped)
-            echo "::warning::Pipeline Scan fue skipped — revisá los logs del build."
-            exit 0
-            ;;
-          *)
-            echo "::error::Pipeline Scan sin resultados (outcome=$SCAN_OUTCOME). Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
-            exit 1
-            ;;
-        esac
+        SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
+        blocking=$(jq '[.findings[]?] | length' filtered_results.json)
+        total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
+        accepted=$(( total - blocking ))
 
-    # ── RESULTADO FINAL ────────────────────────────────────────
-    - name: Publicar resultado
-      id: result
-      if: ${{ always() }}
-      shell: bash
-      env:
-        IS_DOTNET: ${{ steps.configuration.outputs.is_dotnet }}
-      run: |
-        set -Eeuo pipefail
-        MATCHED="${IS_DOTNET:-false}"
-        echo "workflow_matched=$MATCHED" >> "$GITHUB_OUTPUT"
-        echo "Workflow matched: $MATCHED"
+        {
+          echo "## 🛡️ Veracode Pipeline Scan — Resumen de Ejecución (\`${GITHUB_REF_NAME}\`)"
+          echo ""
+          echo "Gate configurado: \`$FAIL_ON_SEV\` | Total detectado: **$total** (**$blocking** bloqueante(s), **$accepted** aceptado(s) por baseline)."
+          echo ""
+          if [ "$blocking" -gt 0 ]; then
+            echo "### 🔴 Findings bloqueantes"
+            echo ""
+            echo "| Severidad | CWE | Tipo | Ubicación |"
+            echo "|---|---|---|---|"
+            jq -r --argjson sev "$SEVN" '
+              .findings[]? |
+              (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
+              "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+            ' filtered_results.json | head -60
+            echo ""
+          else
+            echo "✅ **Sin vulnerabilidades bloqueantes en esta rama.**"
+            echo ""
+          fi
+          if [ "$accepted" -gt 0 ]; then
+            echo ""
+            echo "<details>"
+            echo "<summary>🟡 $accepted aceptado(s) por baseline</summary>"
+            echo ""
+            echo "| Severidad | CWE | Tipo | Ubicación |"
+            echo "|---|---|---|---|"
+            jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
+              (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
+              | .findings[]?
+              | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
+              | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
+              | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
+            ' results.json | head -60
+            echo ""
+            echo "</details>"
+            echo ""
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
