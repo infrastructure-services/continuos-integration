@@ -280,14 +280,15 @@ runs:
     - name: Veracode SCA (Agent-Based)
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' && inputs.srcclr-api-token != '' && always() }}
       id: sca
-      continue-on-error: true
       env:
         SRCCLR_API_TOKEN: ${{ inputs.srcclr-api-token }}
-      uses: veracode/veracode-sca@01bdc0cbd6b4990e93519deedc5140e5ff48b98e # v2.1.19
+      uses: veracode/veracode-sca@v2.1.19
       with:
         github_token: ${{ inputs.github_token }}
         create-issues: true
         quick: false
+        allow-dirty: true
+
 
     # ── COMENTAR EN PR (Unificado SAST + SCA) ──────────────────
     - name: Comentar findings en el PR
