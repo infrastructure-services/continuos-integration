@@ -154,6 +154,25 @@ runs:
       run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
       shell: bash
 
+    - name: "Continuos Integration Javascript Node24 y PNPM 11"
+      if: ${{ inputs.workflow == 'Node24' }}
+      uses: infrastructure-services/continuos-integration@javascript-cicdv3
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        matrix_version: '24.x'
+        fontawesome_token: ${{ inputs.fontawesome_token }}
+        pnpm_version: '11.x'
+        sentinel_url: ${{ inputs.sentinel_url }}
+        gitops_url: ${{ inputs.gitops_url }}
+
+    - name: Mark matched (Javascript)
+      if: ${{ inputs.workflow == 'Node24' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
     - name: "Continuos Integration Golang"
       if: ${{ inputs.workflow == 'Go' }}
       uses: infrastructure-services/continuos-integration@go-cicdv3
@@ -248,7 +267,7 @@ runs:
     - name: Validation of Supported Workflows
       if: ${{ env.WORKFLOW_MATCHED != 'true' }}
       run: |
-        echo "::error title=❌ Unsupported workflow::'${{ inputs.workflow }}' no está soportado. Contactar a Devops para revisar la variable WORKFLOW_CI. Workflows soportados: .NET, .NET 8, .NET 10, CRA, Vite, Rsbuild, Next.js, Go, Python, PythonData, Python311, React Native, html, php."
+        echo "::error title=❌ Unsupported workflow::'${{ inputs.workflow }}' no está soportado. Contactar a Devops para revisar la variable WORKFLOW_CI. Workflows soportados: .NET, .NET 8, .NET 10, CRA, Vite, Rsbuild, Next.js, Node24, Go, Python, PythonData, Python311, React Native, html, php."
         exit 1
       shell: bash
 
