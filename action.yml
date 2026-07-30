@@ -630,7 +630,7 @@ runs:
       env:
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
         SCA_OUTCOME: ${{ steps.sca.outcome }}
-        SCA_REPORT_URL: ${{ inputs.sca-report-url }}
+        SCA_REPORT_URL: ${{ steps.sca.outputs.scan-url || inputs.sca-report-url }}
       run: |
         set -Eeuo pipefail
 
@@ -722,7 +722,7 @@ runs:
           echo "- [Ver issues SCA](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)"
 
           if [[ -n "$SCA_REPORT_URL" ]]; then
-            echo "- [Ver reporte completo de Veracode SCA]($SCA_REPORT_URL)"
+            echo "- [Ver reporte completo de Veracode SCA] [$SCA_REPORT_URL]($SCA_REPORT_URL)"
           fi
         } >> "$GITHUB_STEP_SUMMARY"
 
