@@ -1,0 +1,668 @@
+name: 'Continuous Integration – Veracode'
+description: >
+  Action de integración continua para proyectos .NET con análisis de seguridad
+  Veracode: Pipeline Scan (SAST), SCA y, opcionalmente, Policy Scan (Upload and Scan).
+
+inputs:
+  # ── Credenciales Veracode ──────────────────────────────────────────────────
+  veracode-api-id:
+    description: 'ID de API de Veracode (VID). Pasar desde secrets del workflow llamador.'
+    required: true
+  veracode-api-key:
+    description: 'Clave de API de Veracode (VKEY). Pasar desde secrets del workflow llamador.'
+    required: true
+
+  # ── Token de GitHub ────────────────────────────────────────────────────────
+  github-token:
+    description: 'Token de GitHub para publicar comentarios en PR y resultados SARIF.'
+    required: true
+
+  # ── Identificación de la aplicación ────────────────────────────────────────
+  project:
+    description: 'Nombre del proyecto o área (ej: infrastructure-services). Se usa para calcular el nombre de app en Veracode.'
+    required: true
+  appname:
+    description: 'Nombre de la aplicación (ej: mi-api). Se combina con `project` para formar PROJECT_APPNAME.'
+    required: true
+
+  # ── Pipeline Scan ──────────────────────────────────────────────────────────
+  fail-on-severity:
+    description: 'Severidades que bloquean el pipeline en Pipeline Scan (ej: "Very High, High").'
+    required: false
+    default: 'Very High, High'
+  scan-timeout:
+    description: 'Timeout en minutos para Pipeline Scan.'
+    required: false
+    default: '30'
+
+  # ── Veracode SCA ───────────────────────────────────────────────────────────
+  srcclr-api-token:
+    description: 'Token de API para Veracode SCA (Agent-Based Scan). Si está vacío, se omite el análisis SCA.'
+    required: false
+    default: ''
+
+  # ── Policy Scan (Upload and Scan) ──────────────────────────────────────────
+  policy-scan-enabled:
+    description: >
+      Habilita el Policy Scan de Veracode (Upload and Scan → plataforma Veracode).
+      Solo se ejecuta en eventos que no sean pull_request y para proyectos .NET.
+      Valor por defecto: false, para no cambiar el comportamiento de consumidores existentes.
+    required: false
+    default: 'false'
+  policy-criticality:
+    description: 'Criticidad del perfil de Veracode para Policy Scan (Very High, High, Medium, Low, Informational).'
+    required: false
+    default: 'High'
+  policy-scan-timeout:
+    description: 'Timeout en minutos que el action veracode-uploadandscan-action espera por el veredicto de la plataforma.'
+    required: false
+    default: '45'
+  policy-delete-incomplete-scan:
+    description: >
+      Acción ante scans incompletos anteriores:
+        0 = no borrar,
+        1 = borrar solo si tiene menos de 24 horas,
+        2 = siempre borrar (recomendado para CI).
+    required: false
+    default: '2'
+  policy-scan-all-nonfatal-top-level-modules:
+    description: 'Escanear todos los módulos de nivel superior no fatales en Policy Scan.'
+    required: false
+    default: 'true'
+
+outputs:
+  policy-scan-outcome:
+    description: 'Resultado del step de Upload and Scan (success, failure, skipped, cancelled).'
+    value: ${{ steps.policy-upload.outcome }}
+  policy-compliance-status:
+    description: 'Estado de compliance de la política de Veracode (PASSED, DID_NOT_PASS, NOT_ASSESSED, etc.).'
+    value: ${{ steps.policy-compliance.outputs.compliance_status }}
+  policy-app-name:
+    description: 'Nombre completo de la aplicación registrado en Veracode (PROJECT_APPNAME).'
+    value: ${{ steps.configuration.outputs.veracode_app_name }}
+
+runs:
+  using: 'composite'
+  steps:
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CONFIGURACIÓN
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Configuración
+      id: configuration
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        VERACODE_APP_NAME="${{ inputs.project }}_${{ inputs.appname }}"
+        echo "veracode_app_name=${VERACODE_APP_NAME}" >> "$GITHUB_OUTPUT"
+
+        if find . -maxdepth 6 -name "*.csproj" -not -path "*/.git/*" | grep -q .; then
+          echo "is_dotnet=true" >> "$GITHUB_OUTPUT"
+          echo "[INFO] Proyecto .NET detectado. Nombre de app Veracode: ${VERACODE_APP_NAME}"
+        else
+          echo "is_dotnet=false" >> "$GITHUB_OUTPUT"
+          echo "[INFO] No se detectó proyecto .NET (.csproj). Se omitirán los pasos de análisis Veracode."
+        fi
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # BUILD
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Configurar .NET SDK
+      if: steps.configuration.outputs.is_dotnet == 'true'
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restaurar dependencias
+      if: steps.configuration.outputs.is_dotnet == 'true'
+      shell: bash
+      run: dotnet restore
+
+    - name: Publicar aplicación
+      if: steps.configuration.outputs.is_dotnet == 'true'
+      shell: bash
+      run: dotnet publish --configuration Release --output ./publish --no-restore
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PACKAGE
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Empaquetar para Veracode
+      id: package
+      if: steps.configuration.outputs.is_dotnet == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [ ! -d "publish" ] || [ -z "$(ls -A publish/ 2>/dev/null)" ]; then
+          echo "::error::El directorio 'publish' está vacío o no existe. Verificá que el paso de compilación finalizó correctamente."
+          exit 1
+        fi
+
+        zip -r veracode-package.zip publish/
+        PKG_SIZE=$(du -sh veracode-package.zip | cut -f1)
+        echo "[INFO] Paquete creado: ${PKG_SIZE} — veracode-package.zip"
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # VERACODE SCA (Agent-Based Scan)
+    # Se ejecuta con allow-dirty: true porque el workspace tiene archivos
+    # generados por los pasos de build anteriores.
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Veracode SCA
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && inputs.srcclr-api-token != '' }}
+      continue-on-error: true
+      uses: veracode/veracode-sca@v2.1.19
+      env:
+        SRCCLR_API_TOKEN: ${{ inputs.srcclr-api-token }}
+      with:
+        github_token: ${{ inputs.github-token }}
+        create-issues: true
+        quick: false
+        update_advisor: false
+        path: .
+        allow-dirty: true
+        debug: false
+        skip-collectors: false
+        recursive: false
+        skip-vms: false
+        no-graphs: false
+        platformType: CLOUD
+        breakBuildOnPolicyFindings: false
+        sca_fix_enabled: false
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # PIPELINE SCAN (SAST)
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Configurar JDK 11
+      if: steps.configuration.outputs.is_dotnet == 'true'
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+
+    - name: Descargar Veracode Pipeline Scanner
+      if: steps.configuration.outputs.is_dotnet == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        curl -sSL https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip \
+          -o pipeline-scan.zip
+        unzip -o pipeline-scan.zip pipeline-scan.jar
+        echo "[INFO] Pipeline Scanner descargado correctamente."
+
+    - name: Ejecutar Pipeline Scan
+      if: steps.configuration.outputs.is_dotnet == 'true'
+      id: scan
+      continue-on-error: true
+      shell: bash
+      env:
+        VID: ${{ inputs.veracode-api-id }}
+        VKEY: ${{ inputs.veracode-api-key }}
+        FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
+        SCAN_TIMEOUT: ${{ inputs.scan-timeout }}
+        APP_NAME: ${{ steps.configuration.outputs.veracode_app_name }}
+      run: |
+        set -Eeuo pipefail
+
+        BASELINE=()
+        if [ -f veracode-baseline.json ]; then
+          BASELINE=(--baseline_file veracode-baseline.json)
+          echo "[INFO] Baseline presente: solo se gatean findings nuevos."
+        else
+          echo "[INFO] Sin baseline: se gatean todos los findings."
+        fi
+
+        java -jar pipeline-scan.jar \
+          -vid "$VID" \
+          -vkey "$VKEY" \
+          --file "veracode-package.zip" \
+          --project_name "$APP_NAME" \
+          --project_url "https://github.com/$GITHUB_REPOSITORY" \
+          --json_output_file results.json \
+          --filtered_json_output_file filtered_results.json \
+          --timeout "$SCAN_TIMEOUT" \
+          "${BASELINE[@]}" \
+          --fail_on_severity "$FAIL_ON_SEV"
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # SARIF – Conversión y publicación
+    # Se omite si results.json/veracode-results.sarif no existen (ej: el scanner
+    # falló antes de generarlos) para evitar errores secundarios en el log.
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Convertir resultados a SARIF
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() && hashFiles('results.json') != '' }}
+      continue-on-error: true
+      uses: veracode/veracode-pipeline-scan-results-to-sarif@v2.0.5
+      with:
+        pipeline-results-json: results.json
+        noupload: 'true'
+
+    - name: Publicar SARIF en la pestaña Security
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() && hashFiles('veracode-results.sarif') != '' }}
+      continue-on-error: true
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: veracode-results.sarif
+        category: veracode-pipeline-scan
+
+    - name: Guardar resultados como artifact
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        if-no-files-found: warn
+        name: veracode-pipeline-results
+        path: |
+          results.json
+          filtered_results.json
+          veracode-results.sarif
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # COMENTARIO EN PR
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Comentar resultados en PR
+      if: >-
+        ${{ steps.configuration.outputs.is_dotnet == 'true' &&
+            always() &&
+            github.event_name == 'pull_request' }}
+      continue-on-error: true
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const appName  = '${{ steps.configuration.outputs.veracode_app_name }}';
+          const scanOutcome = '${{ steps.scan.outcome }}';
+          const ref      = '${{ github.head_ref || github.ref_name }}';
+          const sha      = '${{ github.sha }}'.substring(0, 8);
+          const runUrl   = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+
+          let statusIcon, statusText, detail;
+
+          if (scanOutcome === 'success') {
+            statusIcon = '✅';
+            statusText = 'Sin findings bloqueantes';
+            detail     = 'El análisis de seguridad estático (Pipeline Scan) no encontró vulnerabilidades ' +
+                         'que superen el umbral de severidad configurado.';
+          } else if (scanOutcome === 'failure') {
+            let count = '?';
+            try {
+              const data = JSON.parse(fs.readFileSync('filtered_results.json', 'utf8'));
+              count = (data.findings || []).length;
+            } catch (_) {}
+            statusIcon = '❌';
+            statusText = `Findings bloqueantes detectados (${count})`;
+            detail     = 'Se encontraron vulnerabilidades que superan el umbral configurado. ' +
+                         'Revisá los detalles en la pestaña **Security** o en los artifacts del workflow.\n\n' +
+                         '> ⚠️ Este pull request no puede mergearse hasta resolver los findings bloqueantes.';
+          } else {
+            statusIcon = '⚠️';
+            statusText = `Estado: ${scanOutcome}`;
+            detail     = 'El Pipeline Scan no pudo completarse. Revisá los logs del workflow para más detalles.';
+          }
+
+          const body = [
+            `## ${statusIcon} Veracode Pipeline Scan — ${statusText}`,
+            '',
+            `| Campo | Valor |`,
+            `|-------|-------|`,
+            `| **Aplicación** | \`${appName}\` |`,
+            `| **Branch** | \`${ref}\` |`,
+            `| **Commit** | \`${sha}\` |`,
+            `| **Workflow** | [Ver ejecución](${runUrl}) |`,
+            '',
+            detail,
+            '',
+            '> 🔍 Resultados completos disponibles en la pestaña **Security** y como artifact del workflow.',
+          ].join('\n');
+
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo:  context.repo.repo,
+            issue_number: context.issue.number,
+            body,
+          });
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # JOB SUMMARY
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Generar resumen del job
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      shell: bash
+      env:
+        APP_NAME: ${{ steps.configuration.outputs.veracode_app_name }}
+        SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        EVENT_NAME: ${{ github.event_name }}
+        REPO: ${{ github.repository }}
+        REF: ${{ github.ref_name }}
+        SHA: ${{ github.sha }}
+        RUN_ID: ${{ github.run_id }}
+      run: |
+        set -euo pipefail
+
+        SHORT_SHA="${SHA:0:8}"
+        SECURITY_URL="https://github.com/${REPO}/security/code-scanning"
+        RUN_URL="https://github.com/${REPO}/actions/runs/${RUN_ID}"
+
+        FINDINGS_COUNT="—"
+        if [ -f filtered_results.json ]; then
+          FINDINGS_COUNT=$(python3 -c \
+            "import json; d=json.load(open('filtered_results.json')); print(len(d.get('findings', [])))" \
+            2>/dev/null || echo "?")
+        fi
+
+        case "$SCAN_OUTCOME" in
+          success)
+            SCAN_BADGE="✅ Sin findings bloqueantes"
+            ;;
+          failure)
+            SCAN_BADGE="❌ Findings bloqueantes detectados"
+            ;;
+          skipped)
+            SCAN_BADGE="⏭️ Omitido (fallo en paso previo)"
+            ;;
+          cancelled)
+            SCAN_BADGE="🚫 Cancelado"
+            ;;
+          *)
+            SCAN_BADGE="⚠️ ${SCAN_OUTCOME}"
+            ;;
+        esac
+
+        {
+          echo "# 🔒 Veracode Security Scan"
+          echo ""
+          echo "| Campo | Valor |"
+          echo "|-------|-------|"
+          echo "| **Aplicación** | \`${APP_NAME}\` |"
+          echo "| **Repositorio** | \`${REPO}\` |"
+          echo "| **Branch / Ref** | \`${REF}\` |"
+          echo "| **Commit** | \`${SHORT_SHA}\` |"
+          echo "| **Evento** | \`${EVENT_NAME}\` |"
+          echo ""
+          echo "## Pipeline Scan (SAST)"
+          echo ""
+          echo "**Estado:** ${SCAN_BADGE}"
+          echo ""
+          if [ -f filtered_results.json ]; then
+            echo "**Findings bloqueantes:** ${FINDINGS_COUNT}"
+            echo ""
+          fi
+          if [ -f results.json ]; then
+            echo "📊 Resultados completos disponibles como artifact de este workflow."
+          else
+            echo "⚠️ No se generaron resultados JSON. El scanner puede haber fallado antes de completar el análisis."
+          fi
+          echo ""
+          echo "---"
+          echo ""
+          echo "🔗 [Ver en pestaña Security](${SECURITY_URL}) · [Ver ejecución del workflow](${RUN_URL})"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # GATE DE PIPELINE SCAN
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Aplicar gate de Pipeline Scan
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      shell: bash
+      env:
+        SCAN_OUTCOME: ${{ steps.scan.outcome }}
+      run: |
+        if [ -f filtered_results.json ]; then
+          if [ "$SCAN_OUTCOME" = "success" ]; then
+            echo "✅ Sin findings bloqueantes."
+            exit 0
+          fi
+          echo "::error::Pipeline Scan encontró findings bloqueantes. Revisá los resultados en la pestaña Security."
+          exit 1
+        fi
+
+        case "$SCAN_OUTCOME" in
+          skipped)
+            echo "::error::Pipeline Scan fue omitido porque falló un paso anterior (build o empaquetado)."
+            exit 1
+            ;;
+          cancelled)
+            echo "::error::Pipeline Scan fue cancelado."
+            exit 1
+            ;;
+          *)
+            echo "::error::Pipeline Scan no generó resultados. Revisá el error original del scanner, las credenciales y los permisos de Veracode."
+            exit 1
+            ;;
+        esac
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # POLICY SCAN (Upload and Scan → Veracode Platform)
+    # Solo se ejecuta cuando:
+    #   • inputs.policy-scan-enabled == 'true'
+    #   • No es un pull request
+    #   • El proyecto es .NET
+    # Los pasos anteriores siempre corren (Pipeline Scan) y el Policy Scan
+    # corre en paralelo conceptualmente, pero como composite action se ejecuta
+    # en secuencia. Si el gate de Pipeline Scan falla, el Policy Scan NO corre
+    # a menos que se use always() — se omite intencionalmente para no subir
+    # código con findings conocidos a la plataforma.
+    # ══════════════════════════════════════════════════════════════════════════
+
+    - name: Verificar paquete para Policy Scan
+      id: policy-check
+      if: >-
+        ${{ always() &&
+            steps.configuration.outputs.is_dotnet == 'true' &&
+            github.event_name != 'pull_request' &&
+            inputs.policy-scan-enabled == 'true' }}
+      shell: bash
+      env:
+        APP_NAME: ${{ steps.configuration.outputs.veracode_app_name }}
+        RUN_NUMBER: ${{ github.run_number }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -f "veracode-package.zip" ]; then
+          echo "::error::El archivo veracode-package.zip no existe. El Policy Scan requiere que el paso de empaquetado se complete correctamente antes de continuar."
+          exit 1
+        fi
+
+        PKG_SIZE=$(du -sh veracode-package.zip | cut -f1)
+        VERACODE_VERSION="${RUN_NUMBER}-${SHA:0:8}"
+
+        echo "version=${VERACODE_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "[INFO] Verificación de paquete OK: ${PKG_SIZE} — veracode-package.zip"
+        echo "[INFO] Iniciando Policy Scan para aplicación: ${APP_NAME}"
+        echo "[INFO] Versión del scan: ${VERACODE_VERSION}"
+
+    - name: Veracode Upload and Scan (Policy Scan)
+      id: policy-upload
+      if: >-
+        ${{ always() &&
+            steps.configuration.outputs.is_dotnet == 'true' &&
+            github.event_name != 'pull_request' &&
+            inputs.policy-scan-enabled == 'true' &&
+            steps.policy-check.outcome == 'success' }}
+      uses: veracode/veracode-uploadandscan-action@0.2.11
+      with:
+        appname: ${{ steps.configuration.outputs.veracode_app_name }}
+        createprofile: true
+        criticality: ${{ inputs.policy-criticality }}
+        filepath: veracode-package.zip
+        version: ${{ steps.policy-check.outputs.version }}
+        vid: ${{ inputs.veracode-api-id }}
+        vkey: ${{ inputs.veracode-api-key }}
+        scanallnonfataltoplevelmodules: ${{ inputs.policy-scan-all-nonfatal-top-level-modules }}
+        deleteincompletescan: ${{ inputs.policy-delete-incomplete-scan }}
+        scantimeout: ${{ inputs.policy-scan-timeout }}
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # CONSULTA DE POLICY COMPLIANCE STATUS
+    # Instala veracode-api-signing + httpie en un venv temporal, consulta la
+    # API de Veracode con HMAC y parsea el estado de compliance con jq.
+    # Realiza polling para tolerar el tiempo de procesamiento de la plataforma.
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Consultar policy_compliance_status en Veracode Platform
+      id: policy-compliance
+      if: >-
+        ${{ always() &&
+            steps.configuration.outputs.is_dotnet == 'true' &&
+            github.event_name != 'pull_request' &&
+            inputs.policy-scan-enabled == 'true' &&
+            steps.policy-upload.outcome == 'success' }}
+      shell: bash
+      env:
+        VID: ${{ inputs.veracode-api-id }}
+        VKEY: ${{ inputs.veracode-api-key }}
+        APP_NAME: ${{ steps.configuration.outputs.veracode_app_name }}
+      run: |
+        set -euo pipefail
+
+        echo "[INFO] Instalando dependencias de API Veracode en entorno virtual temporal..."
+        python3 -m venv /tmp/veracode-api-venv
+        /tmp/veracode-api-venv/bin/pip install --quiet veracode-api-signing httpie
+
+        # URL-encode del nombre de app usando Python (maneja espacios, guiones bajos, etc.)
+        ENCODED_NAME=$(python3 -c \
+          "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+          "$APP_NAME")
+
+        MAX_ATTEMPTS=10
+        SLEEP_SECONDS=30
+        COMPLIANCE_STATUS=""
+
+        echo "[INFO] Consultando estado de compliance para: ${APP_NAME}"
+        echo "[INFO] Polling: hasta ${MAX_ATTEMPTS} intentos con ${SLEEP_SECONDS}s de espera entre cada uno."
+
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          echo "[INFO] Intento ${i}/${MAX_ATTEMPTS}..."
+
+          # Capturar stderr para diagnóstico sin exponer credenciales
+          HTTP_RESPONSE=$(
+            VERACODE_API_KEY_ID="$VID" \
+            VERACODE_API_KEY_SECRET="$VKEY" \
+            /tmp/veracode-api-venv/bin/http \
+              --check-status \
+              --ignore-stdin \
+              --auth-type=veracode_hmac \
+              GET \
+              "https://api.veracode.com/appsec/v1/applications?name=${ENCODED_NAME}" \
+              2>/tmp/veracode-api-stderr.txt
+          ) || {
+            # Filtrar el stderr para no exponer credenciales en los logs
+            STDERR_DIAG=$(grep -v -i "key\|secret\|token\|auth" /tmp/veracode-api-stderr.txt \
+              | head -10 || true)
+            echo "[WARN] Error al consultar la API de Veracode (intento ${i}):"
+            echo "$STDERR_DIAG"
+            if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
+              echo "[INFO] Esperando ${SLEEP_SECONDS}s antes del próximo intento..."
+              sleep "$SLEEP_SECONDS"
+              continue
+            fi
+            echo "::error::No se pudo consultar la API de Veracode después de ${MAX_ATTEMPTS} intentos. Revisá las credenciales y la conectividad."
+            echo "compliance_status=API_ERROR" >> "$GITHUB_OUTPUT"
+            exit 1
+          }
+
+          # Buscar el perfil cuyo nombre coincide exactamente con APP_NAME
+          COMPLIANCE_STATUS=$(echo "$HTTP_RESPONSE" \
+            | jq -r --arg name "$APP_NAME" \
+              '(.embedded.applications // [])[]
+               | select(.profile.name == $name)
+               | .profile.policies[0].policy_compliance_status // ""' \
+            2>/dev/null | head -1 || echo "")
+
+          if [ -z "$COMPLIANCE_STATUS" ]; then
+            echo "[WARN] Estado de compliance no disponible aún (intento ${i}). La plataforma puede seguir procesando el scan."
+            if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
+              echo "[INFO] Esperando ${SLEEP_SECONDS}s antes del próximo intento..."
+              sleep "$SLEEP_SECONDS"
+              continue
+            fi
+            echo "::error::No se pudo obtener el estado de compliance después de ${MAX_ATTEMPTS} intentos (${MAX_ATTEMPTS} × ${SLEEP_SECONDS}s = $((MAX_ATTEMPTS * SLEEP_SECONDS))s)."
+            echo "compliance_status=NOT_ASSESSED" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          # Estado obtenido — salir del loop
+          break
+        done
+
+        echo "compliance_status=${COMPLIANCE_STATUS}" >> "$GITHUB_OUTPUT"
+
+        case "$COMPLIANCE_STATUS" in
+          PASSED)
+            echo "[INFO] ✅ Policy compliance status: PASSED"
+            ;;
+          DID_NOT_PASS)
+            echo "[INFO] ❌ Policy compliance status: DID_NOT_PASS"
+            ;;
+          NOT_ASSESSED)
+            echo "[INFO] ⚠️ Policy compliance status: NOT_ASSESSED"
+            ;;
+          *)
+            echo "[INFO] ⚠️ Policy compliance status desconocido: ${COMPLIANCE_STATUS}"
+            ;;
+        esac
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # GATE DE POLICY SCAN
+    # ══════════════════════════════════════════════════════════════════════════
+    - name: Aplicar gate de Policy Scan
+      if: >-
+        ${{ always() &&
+            steps.configuration.outputs.is_dotnet == 'true' &&
+            github.event_name != 'pull_request' &&
+            inputs.policy-scan-enabled == 'true' }}
+      shell: bash
+      env:
+        POLICY_UPLOAD_OUTCOME: ${{ steps.policy-upload.outcome }}
+        COMPLIANCE_STATUS: ${{ steps.policy-compliance.outputs.compliance_status }}
+        APP_NAME: ${{ steps.configuration.outputs.veracode_app_name }}
+      run: |
+        set -euo pipefail
+
+        echo "[INFO] Evaluando gate de Policy Scan para: ${APP_NAME}"
+        echo "[INFO] Upload outcome: ${POLICY_UPLOAD_OUTCOME}"
+        echo "[INFO] Compliance status: ${COMPLIANCE_STATUS:-<vacío>}"
+
+        # Verificar resultado del upload
+        case "$POLICY_UPLOAD_OUTCOME" in
+          skipped)
+            echo "::error::El Policy Scan fue omitido. Verificá que el paquete existe y que los pasos previos completaron correctamente."
+            exit 1
+            ;;
+          failure)
+            echo "::error::El upload del Policy Scan falló. Revisá las credenciales de Veracode y los permisos del perfil de aplicación."
+            exit 1
+            ;;
+          cancelled)
+            echo "::error::El Policy Scan fue cancelado."
+            exit 1
+            ;;
+        esac
+
+        # Evaluar el estado de compliance
+        case "$COMPLIANCE_STATUS" in
+          PASSED)
+            echo "✅ Policy Gate: PASSED. La aplicación '${APP_NAME}' cumple con la política de Veracode."
+            exit 0
+            ;;
+          DID_NOT_PASS)
+            echo "::error::Policy Gate: FAILED. La aplicación '${APP_NAME}' NO cumple con la política de Veracode. Revisá y corregí los findings en la plataforma Veracode antes de hacer deploy."
+            exit 1
+            ;;
+          NOT_ASSESSED)
+            echo "::error::Policy Gate: NOT_ASSESSED. La política de Veracode no pudo evaluar la aplicación '${APP_NAME}'. Revisá el estado del scan en la plataforma Veracode."
+            exit 1
+            ;;
+          API_ERROR)
+            echo "::error::Policy Gate: ERROR DE API. No se pudo obtener el estado de compliance. Revisá las credenciales de API y la conectividad con api.veracode.com."
+            exit 1
+            ;;
+          "")
+            echo "::error::Policy Gate: Estado de compliance vacío. La plataforma Veracode puede no haber procesado el scan aún. Revisá el estado manualmente."
+            exit 1
+            ;;
+          *)
+            echo "::error::Policy Gate: Estado desconocido '${COMPLIANCE_STATUS}'. Revisá el estado en la plataforma Veracode para la aplicación '${APP_NAME}'."
+            exit 1
+            ;;
+        esac
