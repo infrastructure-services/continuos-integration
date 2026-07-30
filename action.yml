@@ -91,6 +91,7 @@ runs:
         sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
         gitops_url: ${{ inputs.gitops_url }}
         scan_id: ${{ inputs.scan_id }}
+        dotnet-version: '6.0.x'
 
     - name: Mark matched (.NET)
       if: ${{ inputs.workflow == '.NET' }}
