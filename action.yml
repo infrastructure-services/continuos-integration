@@ -307,6 +307,26 @@ runs:
 
         echo "package_path=$GITHUB_WORKSPACE/veracode-package.zip" >> "$GITHUB_OUTPUT"
 
+    # ── POLICY SCAN: PUSH A MAIN / HOTFIX ─────────────────────
+
+    - name: Veracode Policy Scan (main/hotfix)
+      if: >-
+        ${{
+          steps.configuration.outputs.is_dotnet == 'true' &&
+          github.event_name == 'push' &&
+          (
+            github.ref_name == 'main' ||
+            github.ref_name == 'hotfix'
+          )
+        }}
+      uses: veracode/veracode-uploadandscan-action@0.2.7
+      with:
+        appname: ${{ steps.configuration.outputs.veracode_app_name }}
+        createprofile: true
+        filepath: ${{ steps.package.outputs.package_path }}
+        vid: ${{ inputs.veracode-api-id }}
+        vkey: ${{ inputs.veracode-api-key }}
+
     # ── SAST: PIPELINE SCAN ────────────────────────────────────
 
     - name: Setup JDK 11
