@@ -416,6 +416,7 @@ runs:
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
         SCA_OUTCOME: ${{ steps.sca.outcome }}
         SCA_REPORT_URL: ${{ inputs.sca-report-url }}
+        SCA_TOKEN: ${{ inputs.srcclr-api-token }}
       run: |
         set -Eeuo pipefail
 
@@ -461,11 +462,20 @@ runs:
               echo "|---|---|---|---|"
 
               jq -r --argjson sev "$SEVN" '
-                .findings[]? |
-                (.files.source_file.file // "archivo desconocido") |
-                sub("^home/runner/work/[^/]+/[^/]+/"; "") as $path |
-                "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-              ' filtered_results.json | head -60
+                limit(60;
+                  .findings[]?
+                  | . as $finding
+                  | (
+                      $finding.files.source_file.file
+                      // "archivo desconocido"
+                      | sub("^/?home/runner/work/[^/]+/[^/]+/"; "")
+                    ) as $path
+                  | "| \(
+                      $sev[($finding.severity | tostring)]
+                      // ($finding.severity | tostring)
+                    ) | [CWE-\($finding.cwe_id // "?")](https://cwe.mitre.org/data/definitions/\($finding.cwe_id // "").html) | \($finding.issue_type // "desconocido") | `\($path):\($finding.files.source_file.line // "?")` |"
+                )
+              ' filtered_results.json
             else
               echo "✅ **Sin findings nuevos bloqueantes.**"
             fi
@@ -479,19 +489,34 @@ runs:
               echo "|---|---|---|---|"
 
               jq -r --argjson sev "$SEVN" --slurpfile filtered filtered_results.json '
-                (($filtered[0].findings // [])
-                  | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blocking
-                | .findings[]?
-                | select(
-                    ("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")
-                    as $key
-                    | ($blocking | index($key))
-                    | not
+                (
+                  ($filtered[0].findings // [])
+                  | map([
+                      .cwe_id,
+                      .files.source_file.file,
+                      .files.source_file.line
+                    ])
+                ) as $blocking
+                | limit(60;
+                    .findings[]?
+                    | . as $finding
+                    | [
+                        $finding.cwe_id,
+                        $finding.files.source_file.file,
+                        $finding.files.source_file.line
+                      ] as $key
+                    | select(any($blocking[]; . == $key) | not)
+                    | (
+                        $finding.files.source_file.file
+                        // "archivo desconocido"
+                        | sub("^/?home/runner/work/[^/]+/[^/]+/"; "")
+                      ) as $path
+                    | "| \(
+                        $sev[($finding.severity | tostring)]
+                        // ($finding.severity | tostring)
+                      ) | [CWE-\($finding.cwe_id // "?")](https://cwe.mitre.org/data/definitions/\($finding.cwe_id // "").html) | \($finding.issue_type // "desconocido") | `\($path):\($finding.files.source_file.line // "?")` |"
                   )
-                | (.files.source_file.file // "archivo desconocido")
-                | sub("^home/runner/work/[^/]+/[^/]+/"; "") as $path
-                | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-              ' results.json | head -60
+              ' results.json
 
               echo ""
               echo "</details>"
@@ -521,7 +546,7 @@ runs:
               SCA_STATUS="⚠️ El análisis SCA fue cancelado."
               ;;
             skipped)
-              if [[ -z "${{ inputs.srcclr-api-token }}" ]]; then
+              if [[ -z "$SCA_TOKEN" ]]; then
                 SCA_STATUS="ℹ️ SCA no ejecutado: no se configuró srcclr-api-token."
               else
                 SCA_STATUS="ℹ️ SCA no ejecutado."
