@@ -415,48 +415,81 @@ runs:
         PR_NUMBER: ${{ github.event.pull_request.number }}
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
         SCA_OUTCOME: ${{ steps.sca.outcome }}
-        SCA_REPORT_URL: ${{ inputs.sca-report-url }}
+        SCA_REPORT_URL: ${{ steps.sca.outputs.scan-url || inputs.sca-report-url }}
         SCA_TOKEN: ${{ inputs.srcclr-api-token }}
       run: |
         set -Eeuo pipefail
 
         SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
+        SCA_LABEL="Veracode Dependency Scanning"
+        SCA_ISSUES_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22"
+
+        # ── Métricas SAST ──────────────────────────────────────
+
+        SAST_RESULTS_AVAILABLE="false"
+        BLOCKING=0
+        TOTAL=0
+        ACCEPTED=0
+
+        if [[ -f filtered_results.json ]] \
+          && jq -e '(.findings // []) | type == "array"' filtered_results.json >/dev/null 2>&1; then
+
+          SAST_RESULTS_AVAILABLE="true"
+          BLOCKING="$(jq '(.findings // []) | length' filtered_results.json)"
+
+          if [[ -f results.json ]] \
+            && jq -e '(.findings // []) | type == "array"' results.json >/dev/null 2>&1; then
+            TOTAL="$(jq '(.findings // []) | length' results.json)"
+          else
+            TOTAL="$BLOCKING"
+          fi
+
+          ACCEPTED=$((TOTAL - BLOCKING))
+
+          # Evita mostrar valores negativos si los archivos no pertenecen
+          # exactamente a la misma ejecución.
+          if [[ "$ACCEPTED" -lt 0 ]]; then
+            ACCEPTED=0
+          fi
+        fi
+
+        # ── Métricas SCA ───────────────────────────────────────
+
+        SCA_ISSUES_KNOWN="false"
+        SCA_OPEN_ISSUES=0
+
+        if [[ -n "$SCA_TOKEN" ]]; then
+          if SCA_OPEN_ISSUES="$(
+            gh issue list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --label "$SCA_LABEL" \
+              --limit 1000 \
+              --json number \
+              --jq 'length' \
+              2>/dev/null
+          )"; then
+            if [[ "$SCA_OPEN_ISSUES" =~ ^[0-9]+$ ]]; then
+              SCA_ISSUES_KNOWN="true"
+            fi
+          else
+            SCA_OPEN_ISSUES=0
+          fi
+        fi
 
         {
-          echo "## 🔐 Veracode DevSecOps"
-          echo ""
-          echo "**Rama:** \`${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}\`"
-          echo ""
-          echo "**Commit:** \`${GITHUB_SHA::7}\`"
-          echo ""
-
           # ── SAST ─────────────────────────────────────────────
 
-          echo "### 🛡️ Veracode Pipeline Scan — SAST"
-          echo ""
-
-          if [[ -f filtered_results.json ]]; then
-            BLOCKING="$(jq '[.findings[]?] | length' filtered_results.json)"
-            TOTAL="$(
-              if [[ -f results.json ]]; then
-                jq '[.findings[]?] | length' results.json
-              else
-                echo "$BLOCKING"
-              fi
-            )"
-            ACCEPTED=$((TOTAL - BLOCKING))
-
-            echo "Gate: \`$FAIL_ON_SEV\`"
+          if [[ "$SAST_RESULTS_AVAILABLE" == "true" ]]; then
+            echo "## 🛡️ Veracode Pipeline Scan (SAST) — $BLOCKING bloqueante(s), $ACCEPTED aceptado(s) por baseline"
             echo ""
-            echo "| Métrica | Resultado |"
-            echo "|---|---:|"
-            echo "| Total detectado | $TOTAL |"
-            echo "| Nuevos bloqueantes | $BLOCKING |"
-            echo "| Aceptados por baseline | $ACCEPTED |"
+            echo "Gate: \`$FAIL_ON_SEV\` sobre findings nuevos. Total detectado: **$TOTAL**."
             echo ""
 
-            if [[ "$BLOCKING" -gt 0 ]]; then
-              echo "### 🔴 Findings nuevos — bloquean el merge"
+            if [[ "$BLOCKING" -eq 0 ]]; then
+              echo "✅ Sin findings nuevos en este PR — **merge habilitado**."
+            else
+              echo "⛔ Se detectaron **$BLOCKING finding(s) nuevo(s) bloqueante(s)** — merge bloqueado."
               echo ""
               echo "| Severidad | CWE | Tipo | Ubicación |"
               echo "|---|---|---|---|"
@@ -476,14 +509,17 @@ runs:
                     ) | [CWE-\($finding.cwe_id // "?")](https://cwe.mitre.org/data/definitions/\($finding.cwe_id // "").html) | \($finding.issue_type // "desconocido") | `\($path):\($finding.files.source_file.line // "?")` |"
                 )
               ' filtered_results.json
-            else
-              echo "✅ **Sin findings nuevos bloqueantes.**"
+
+              if [[ "$BLOCKING" -gt 60 ]]; then
+                echo ""
+                echo "_Se muestran los primeros 60 findings bloqueantes. El resultado completo está disponible en el artifact del pipeline._"
+              fi
             fi
 
             if [[ "$ACCEPTED" -gt 0 && -f results.json ]]; then
               echo ""
               echo "<details>"
-              echo "<summary>🟡 $ACCEPTED aceptado(s) por baseline</summary>"
+              echo "<summary>🟡 $ACCEPTED aceptado(s) por baseline (no bloquean)</summary>"
               echo ""
               echo "| Severidad | CWE | Tipo | Ubicación |"
               echo "|---|---|---|---|"
@@ -518,11 +554,18 @@ runs:
                   )
               ' results.json
 
+              if [[ "$ACCEPTED" -gt 60 ]]; then
+                echo ""
+                echo "_Se muestran los primeros 60 findings aceptados. El resultado completo está disponible en el artifact del pipeline._"
+              fi
+
               echo ""
               echo "</details>"
             fi
           else
-            echo "❌ **Pipeline Scan no generó resultados.**"
+            echo "## 🛡️ Veracode Pipeline Scan (SAST) — sin resultados"
+            echo ""
+            echo "❌ Pipeline Scan no generó archivos JSON válidos."
             echo ""
             echo "Revisá los logs del scanner, las credenciales VID/VKEY y los permisos de Veracode."
           fi
@@ -532,42 +575,46 @@ runs:
           echo ""
           echo "---"
           echo ""
-          echo "### 📦 Veracode SCA — Dependencias"
+          echo "## 📦 Veracode SCA — dependencias vulnerables"
           echo ""
 
           case "${SCA_OUTCOME:-skipped}" in
             success)
-              SCA_STATUS="✅ Análisis SCA completado."
+              if [[ "$SCA_ISSUES_KNOWN" == "true" ]]; then
+                if [[ "$SCA_OPEN_ISSUES" -gt 0 ]]; then
+                  echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: 🟠 **$SCA_OPEN_ISSUES dependencia(s) vulnerable(s) abierta(s)** — ver Issues."
+                else
+                  echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: ✅ **sin dependencias vulnerables abiertas**."
+                fi
+              else
+                echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: ✅ análisis completado; no se pudo consultar la cantidad de Issues abiertos."
+              fi
               ;;
             failure)
-              SCA_STATUS="❌ El análisis SCA falló. Revisá los logs del action."
+              echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: ❌ **el análisis SCA falló** — revisá los logs del action."
               ;;
             cancelled)
-              SCA_STATUS="⚠️ El análisis SCA fue cancelado."
+              echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: ⚠️ **análisis cancelado**."
               ;;
             skipped)
               if [[ -z "$SCA_TOKEN" ]]; then
-                SCA_STATUS="ℹ️ SCA no ejecutado: no se configuró srcclr-api-token."
+                echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: ℹ️ **no ejecutado porque no se configuró srcclr-api-token**."
               else
-                SCA_STATUS="ℹ️ SCA no ejecutado."
+                echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: ℹ️ **no ejecutado**."
               fi
               ;;
             *)
-              SCA_STATUS="ℹ️ Estado SCA: ${SCA_OUTCOME:-desconocido}."
+              echo "Escaneo agent-based del árbol de dependencias (**no es SAST**). Estado: ℹ️ \`${SCA_OUTCOME:-desconocido}\`."
               ;;
           esac
 
-          echo "$SCA_STATUS"
           echo ""
-          echo "El análisis SCA revisa dependencias y no es un análisis SAST."
 
           if [[ -n "$SCA_REPORT_URL" ]]; then
-            echo ""
-            echo "- [Ver reporte completo de Veracode SCA]($SCA_REPORT_URL)"
+            echo "- Reporte completo: [$SCA_REPORT_URL]($SCA_REPORT_URL)"
           fi
 
-          echo ""
-          echo "- [Ver issues SCA](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)"
+          echo "- Detalle por vulnerabilidad: [Issues con label \`$SCA_LABEL\`]($SCA_ISSUES_URL)."
         } > pr_comment.md
 
         gh pr comment "$PR_NUMBER" \
