@@ -3,43 +3,43 @@ description: Build .NET, Pipeline Scan (SAST), Veracode SCA, SARIF, gate de PR, 
 
 inputs:
   project:
-    description: Prefijo del proyecto (vars.PROJECT). Se combina con appname para formar el app name en Veracode.
+    description: Prefijo del proyecto. Se combina con appname para formar el nombre de la aplicación en Veracode.
     required: true
 
   appname:
-    description: Nombre de la aplicación (vars.APPNAME).
+    description: Nombre de la aplicación.
     required: true
 
   workflow:
-    description: "Nombre del workflow a ejecutar. Valores soportados: '.NET', '.NET 8', '.NET 10'."
+    description: "Workflow a ejecutar. Valores soportados: '.NET', '.NET 8', '.NET 10'."
     required: true
 
   veracode-api-id:
-    description: API ID de Veracode (VID).
+    description: API ID de Veracode.
     required: true
 
   veracode-api-key:
-    description: API Key de Veracode (VKEY).
+    description: API Key de Veracode.
     required: true
 
   srcclr-api-token:
-    description: Token de API de Veracode SRCCLR para el scanner de SCA.
+    description: Token SRCCLR de Veracode para el análisis SCA.
     required: false
     default: ''
 
   github_token:
-    description: Token para el feed privado de GitHub Packages (NuGet), listar issues y comentar PRs.
+    description: Token para NuGet, issues, comentarios de PR y artifacts.
     required: true
 
   solution:
-    description: Ruta de la solución .sln o .slnx. Si está vacío se auto-detecta.
+    description: Ruta de la solución .sln o .slnx. Si queda vacío, se autodetecta.
     required: false
     default: ''
 
   dotnet-version:
-    description: Versión del SDK .NET de respaldo (si no hay global.json).
+    description: Versión explícita del SDK .NET. Si queda vacío, se determina automáticamente.
     required: false
-    default: '8.0.x'
+    default: ''
 
   nuget-feed-url:
     description: URL del feed privado de NuGet.
@@ -47,27 +47,32 @@ inputs:
     default: 'https://nuget.pkg.github.com/architecture-it/index.json'
 
   first-party-prefix:
-    description: Prefijo de los ensamblados propios del repo que se empaquetan para Veracode.
+    description: Prefijo de los ensamblados propios que se empaquetan para Veracode.
     required: false
     default: ''
 
   fail-on-severity:
-    description: Severidades que bloquean el merge en el Pipeline Scan.
+    description: Severidades que bloquean el merge en Pipeline Scan.
     required: false
     default: 'Very High, High, Medium'
 
   scan-timeout:
-    description: Tiempo máximo (minutos) que el jar de Veracode espera respuesta del backend.
+    description: Tiempo máximo, en minutos, que Pipeline Scan espera al backend.
     required: false
     default: '25'
 
+  sca-report-url:
+    description: URL opcional del reporte de Veracode SCA.
+    required: false
+    default: ''
+
 outputs:
   veracode-app-name:
-    description: Nombre final de la aplicación en Veracode (PROJECT_APPNAME).
+    description: Nombre final de la aplicación en Veracode.
     value: ${{ steps.configuration.outputs.veracode_app_name }}
 
   workflow-matched:
-    description: Indica si el workflow solicitado fue reconocido y ejecutado.
+    description: Indica si el workflow solicitado fue reconocido.
     value: ${{ steps.result.outputs.workflow_matched }}
 
 runs:
@@ -75,64 +80,62 @@ runs:
 
   steps:
 
-    # ── CONFIGURACIÓN INICIAL ──────────────────────────────────
+    # ── CONFIGURACIÓN ──────────────────────────────────────────
+
     - name: Configuración inicial
       id: configuration
       shell: bash
       env:
         INPUT_WORKFLOW: ${{ inputs.workflow }}
-        INPUT_PROJECT:  ${{ inputs.project }}
-        INPUT_APPNAME:  ${{ inputs.appname }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_APPNAME: ${{ inputs.appname }}
       run: |
         set -Eeuo pipefail
 
         trim() {
-          local v="$1"
-          v="${v#"${v%%[![:space:]]*}"}"
-          v="${v%"${v##*[![:space:]]}"}"
-          printf '%s' "$v"
+          local value="$1"
+          value="${value#"${value%%[![:space:]]*}"}"
+          value="${value%"${value##*[![:space:]]}"}"
+          printf '%s' "$value"
         }
 
         WORKFLOW="$(trim "$INPUT_WORKFLOW")"
         PROJECT="$(trim "$INPUT_PROJECT")"
         APPNAME="$(trim "$INPUT_APPNAME")"
 
-        [[ -n "$WORKFLOW" ]] || { echo "::error::El input 'workflow' está vacío."; exit 1; }
-        [[ -n "$PROJECT"  ]] || { echo "::error::El input 'project' está vacío. Validar vars.PROJECT."; exit 1; }
-        [[ -n "$APPNAME"  ]] || { echo "::error::El input 'appname' está vacío. Validar vars.APPNAME."; exit 1; }
+        [[ -n "$WORKFLOW" ]] || {
+          echo "::error::El input 'workflow' está vacío."
+          exit 1
+        }
+
+        [[ -n "$PROJECT" ]] || {
+          echo "::error::El input 'project' está vacío."
+          exit 1
+        }
+
+        [[ -n "$APPNAME" ]] || {
+          echo "::error::El input 'appname' está vacío."
+          exit 1
+        }
+        IS_DOTNET="false"
+
+        case "$WORKFLOW" in
+          ".NET"|".NET 8"|".NET 10")
+            IS_DOTNET="true"
+            ;;
+        esac
 
         VERACODE_APP_NAME="${PROJECT}_${APPNAME}"
 
-        IS_DOTNET="false"
-        case "$WORKFLOW" in
-          ".NET"|".NET 8"|".NET 10") IS_DOTNET="true" ;;
-        esac
-
         echo "veracode_app_name=$VERACODE_APP_NAME" >> "$GITHUB_OUTPUT"
-        echo "workflow=$WORKFLOW"                   >> "$GITHUB_OUTPUT"
-        echo "is_dotnet=$IS_DOTNET"                 >> "$GITHUB_OUTPUT"
+        echo "workflow=$WORKFLOW" >> "$GITHUB_OUTPUT"
+        echo "is_dotnet=$IS_DOTNET" >> "$GITHUB_OUTPUT"
 
         echo "Workflow solicitado : $WORKFLOW"
         echo "App name Veracode   : $VERACODE_APP_NAME"
         echo "Es workflow .NET    : $IS_DOTNET"
 
-    # ── BUILD + PACKAGE ────────────────────────────────────────
-    - name: Setup .NET
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ inputs.dotnet-version }}
-        source-url: ${{ inputs.nuget-feed-url }}
-      env:
-        NUGET_AUTH_TOKEN: ${{ inputs.github_token }}
-
-    - name: Cache NuGet
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
-      uses: actions/cache@v4
-      with:
-        path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln', '**/*.slnx') }}
-        restore-keys: nuget-${{ runner.os }}-
+    # ── SOLUCIÓN Y SDK ─────────────────────────────────────────
 
     - name: Detectar solución
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
@@ -142,17 +145,100 @@ runs:
         INPUT_SOLUTION: ${{ inputs.solution }}
       run: |
         set -Eeuo pipefail
+
         if [[ -n "$INPUT_SOLUTION" ]]; then
           SLN="$INPUT_SOLUTION"
+
+          [[ -f "$SLN" ]] || {
+            echo "::error::La solución especificada no existe: $SLN"
+            exit 1
+          }
         else
-          SLN="$(find . -maxdepth 3 \( -name '*.slnx' -o -name '*.sln' \) | head -1)"
+          # Se prefiere .slnx por ser el formato moderno.
+          SLN="$(find . -maxdepth 5 -type f -name '*.slnx' | sort | head -1)"
+
+          if [[ -z "$SLN" ]]; then
+            SLN="$(find . -maxdepth 5 -type f -name '*.sln' | sort | head -1)"
+          fi
+
           [[ -n "$SLN" ]] || {
-            echo "::error::No se encontró ningún .sln ni .slnx. Especificá el input 'solution'."
+            echo "::error::No se encontró ningún archivo .sln ni .slnx."
+            echo "::error::Especificá el input 'solution'."
             exit 1
           }
         fi
+
+        case "$SLN" in
+          *.slnx)
+            SOLUTION_FORMAT="slnx"
+            echo "::notice::Se detectó una solución .slnx: $SLN"
+            ;;
+          *.sln)
+            SOLUTION_FORMAT="sln"
+            echo "::notice::Se detectó una solución .sln: $SLN"
+            ;;
+          *)
+            echo "::error::La solución debe tener extensión .sln o .slnx: $SLN"
+            exit 1
+            ;;
+        esac
+
         echo "sln=$SLN" >> "$GITHUB_OUTPUT"
-        echo "Solución a compilar: $SLN"
+        echo "solution_format=$SOLUTION_FORMAT" >> "$GITHUB_OUTPUT"
+        echo "Solución seleccionada: $SLN"
+
+    - name: Seleccionar versión de .NET
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      id: dotnet
+      shell: bash
+      env:
+        INPUT_DOTNET_VERSION: ${{ inputs.dotnet-version }}
+        WORKFLOW: ${{ steps.configuration.outputs.workflow }}
+        SOLUTION_FORMAT: ${{ steps.solution.outputs.solution_format }}
+      run: |
+        set -Eeuo pipefail
+
+        if [[ -n "$INPUT_DOTNET_VERSION" ]]; then
+          DOTNET_VERSION="$INPUT_DOTNET_VERSION"
+        elif [[ "$SOLUTION_FORMAT" == "slnx" ]]; then
+          # .slnx requiere un SDK moderno.
+          DOTNET_VERSION="10.0.x"
+          echo "::notice::Se utilizará .NET SDK 10 para procesar la solución .slnx."
+        elif [[ "$WORKFLOW" == ".NET 10" ]]; then
+          DOTNET_VERSION="10.0.x"
+        else
+          DOTNET_VERSION="8.0.x"
+        fi
+
+        echo "dotnet_version=$DOTNET_VERSION" >> "$GITHUB_OUTPUT"
+        echo "SDK seleccionado: $DOTNET_VERSION"
+
+    - name: Setup .NET
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ steps.dotnet.outputs.dotnet_version }}
+        source-url: ${{ inputs.nuget-feed-url }}
+      env:
+        NUGET_AUTH_TOKEN: ${{ inputs.github_token }}
+
+    - name: Mostrar versión de .NET
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      shell: bash
+      run: |
+        set -Eeuo pipefail
+        dotnet --info
+
+    - name: Cache NuGet
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln', '**/*.slnx', '**/global.json') }}
+        restore-keys: |
+          nuget-${{ runner.os }}-
+
+    # ── BUILD Y PACKAGE ────────────────────────────────────────
 
     - name: Restore
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
@@ -163,14 +249,22 @@ runs:
         set -Eeuo pipefail
         dotnet restore "$SLN"
 
-    - name: Publish (Release)
+    - name: Publish Release
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       shell: bash
       env:
         SLN: ${{ steps.solution.outputs.sln }}
       run: |
         set -Eeuo pipefail
-        dotnet publish "$SLN" -c Release -o publish --no-restore -p:UseAppHost=false
+
+        rm -rf publish
+        mkdir -p publish
+
+        dotnet publish "$SLN" \
+          -c Release \
+          -o publish \
+          --no-restore \
+          -p:UseAppHost=false
 
     - name: Empaquetar para Veracode
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
@@ -180,68 +274,87 @@ runs:
         FIRST_PARTY_PREFIX: ${{ inputs.first-party-prefix }}
       run: |
         set -Eeuo pipefail
+
+        rm -rf pkg veracode-package.zip
         mkdir -p pkg
 
         if [[ -n "$FIRST_PARTY_PREFIX" ]]; then
-          cp publish/${FIRST_PARTY_PREFIX}*.dll pkg/ 2>/dev/null || true
-          cp publish/${FIRST_PARTY_PREFIX}*.pdb pkg/ 2>/dev/null || true
+          cp "publish/${FIRST_PARTY_PREFIX}"*.dll pkg/ 2>/dev/null || true
+          cp "publish/${FIRST_PARTY_PREFIX}"*.pdb pkg/ 2>/dev/null || true
         else
           cp publish/*.dll pkg/ 2>/dev/null || true
           cp publish/*.pdb pkg/ 2>/dev/null || true
         fi
 
-        COUNT=$(find pkg -name '*.dll' | wc -l)
-        echo "Contenido del paquete ($COUNT dll):"
-        ls -1 pkg
+        COUNT="$(find pkg -type f -name '*.dll' | wc -l | tr -d ' ')"
 
-        [ "$COUNT" -ge 1 ] || {
-          echo "::error::Paquete vacío. Revisá el input 'first-party-prefix' o el directorio publish/."
+        echo "Contenido del paquete ($COUNT DLL):"
+        find pkg -maxdepth 1 -type f -printf '%f\n' | sort
+
+        if [[ "$COUNT" -lt 1 ]]; then
+          echo "::error::Paquete vacío."
+          echo "::error::Revisá first-party-prefix y el contenido de publish/."
           exit 1
-        }
+        fi
 
-        cd pkg && zip -r ../veracode-package.zip . && cd ..
-        echo "Tamaño del paquete:"; du -h veracode-package.zip
-        echo "pkg_ready=true" >> "$GITHUB_OUTPUT"
+        (
+          cd pkg
+          zip -r ../veracode-package.zip .
+        )
 
-    # ── SAST SCAN (PIPELINE SCAN) ──────────────────────────────
+        echo "Tamaño del paquete:"
+        du -h veracode-package.zip
+
+        echo "package_path=$GITHUB_WORKSPACE/veracode-package.zip" >> "$GITHUB_OUTPUT"
+
+    # ── SAST: PIPELINE SCAN ────────────────────────────────────
+
     - name: Setup JDK 11
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       uses: actions/setup-java@v4
       with:
         java-version: '11'
-        distribution: 'temurin'
+        distribution: temurin
 
     - name: Descargar Pipeline Scanner
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       shell: bash
       run: |
         set -Eeuo pipefail
-        curl -sSO https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
+
+        curl --fail --silent --show-error --location \
+          --remote-name \
+          https://downloads.veracode.com/securityscan/pipeline-scan-LATEST.zip
+
         unzip -o pipeline-scan-LATEST.zip
-        
+
     - name: Ejecutar Pipeline Scan
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       id: scan
       continue-on-error: true
       shell: bash
       env:
-        VID:          ${{ inputs.veracode-api-id }}
-        VKEY:         ${{ inputs.veracode-api-key }}
-        FAIL_ON_SEV:  ${{ inputs.fail-on-severity }}
+        VID: ${{ inputs.veracode-api-id }}
+        VKEY: ${{ inputs.veracode-api-key }}
+        FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
         SCAN_TIMEOUT: ${{ inputs.scan-timeout }}
+        PACKAGE_PATH: ${{ steps.package.outputs.package_path }}
       run: |
         set -Eeuo pipefail
+
         BASELINE=()
-        if [ -f veracode-baseline.json ]; then
+
+        if [[ -f veracode-baseline.json ]]; then
           BASELINE=(--baseline_file veracode-baseline.json)
-          echo "[INFO] Baseline presente -> evalúa deltas."
+          echo "[INFO] Baseline presente: se evaluarán findings nuevos."
         else
-          echo "[INFO] Sin baseline -> evalúa TODOS los findings."
+          echo "[INFO] Sin baseline: se evaluarán todos los findings."
         fi
 
         java -jar pipeline-scan.jar \
-          -vid "$VID" -vkey "$VKEY" \
-          --file "veracode-package.zip" \
+          -vid "$VID" \
+          -vkey "$VKEY" \
+          --file "$PACKAGE_PATH" \
           --project_name "$GITHUB_REPOSITORY" \
           --project_url "https://github.com/$GITHUB_REPOSITORY" \
           --json_output_file results.json \
@@ -251,240 +364,339 @@ runs:
           --fail_on_severity "$FAIL_ON_SEV"
 
     - name: Convertir resultados a SARIF
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+      if: ${{ always() && steps.configuration.outputs.is_dotnet == 'true' && hashFiles('results.json') != '' }}
       continue-on-error: true
       uses: veracode/veracode-pipeline-scan-results-to-sarif@v2.0.5
       with:
         pipeline-results-json: results.json
         noupload: 'true'
 
-    - name: Publicar SARIF en la pestaña Security
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+    - name: Publicar SARIF en Security
+      if: ${{ always() && steps.configuration.outputs.is_dotnet == 'true' && hashFiles('veracode-results.sarif') != '' }}
       continue-on-error: true
       uses: github/codeql-action/upload-sarif@v4
       with:
         sarif_file: veracode-results.sarif
         category: veracode-pipeline-scan
 
-    - name: Guardar resultados como artifact
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+    - name: Guardar resultados SAST
+      if: ${{ always() && steps.configuration.outputs.is_dotnet == 'true' }}
       uses: actions/upload-artifact@v4
       with:
         name: veracode-pipeline-results
+        if-no-files-found: warn
         path: |
           results.json
           filtered_results.json
           veracode-results.sarif
 
-    # ── SCA SCAN (AGENT-BASED) ─────────────────────────────────
-    - name: Veracode SCA (Agent-Based)
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && inputs.srcclr-api-token != '' && always() }}
+    # ── SCA: AGENT-BASED ───────────────────────────────────────
+
+    - name: Veracode SCA Agent-Based
+      if: ${{ always() && steps.configuration.outputs.is_dotnet == 'true' && inputs.srcclr-api-token != '' }}
       id: sca
+      continue-on-error: true
+      uses: veracode/veracode-sca@v2.1.19
       env:
         SRCCLR_API_TOKEN: ${{ inputs.srcclr-api-token }}
-      uses: veracode/veracode-sca@v2.1.19
       with:
         github_token: ${{ inputs.github_token }}
         create-issues: true
         quick: false
         allow-dirty: true
 
+    # ── PR COMMENT ─────────────────────────────────────────────
 
-    # ── COMENTAR EN PR (Unificado SAST + SCA) ──────────────────
-    - name: Comentar findings en el PR
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && github.event_name == 'pull_request' && always() }}
+    - name: Comentar resultados en el PR
+      if: ${{ always() && steps.configuration.outputs.is_dotnet == 'true' && github.event_name == 'pull_request' }}
       shell: bash
       env:
-        GH_TOKEN:    ${{ inputs.github_token }}
-        PR_NUMBER:   ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
-        SCA_URL:     ${{ steps.sca.outputs.scan-url }}
         SCA_OUTCOME: ${{ steps.sca.outcome }}
+        SCA_REPORT_URL: ${{ inputs.sca-report-url }}
       run: |
-        SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
-        
-        # 1. Reporte SAST
-        {
-          if [ -f filtered_results.json ]; then
-            blocking=$(jq '[.findings[]?] | length' filtered_results.json)
-            total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
-            accepted=$(( total - blocking ))
+        set -Eeuo pipefail
 
-            echo "## 🛡️ Veracode Pipeline Scan (SAST) — $blocking bloqueante(s), $accepted aceptado(s) por baseline"
+        SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
+
+        {
+          echo "## 🔐 Veracode DevSecOps"
+          echo ""
+          echo "**Rama:** \`${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}\`"
+          echo ""
+          echo "**Commit:** \`${GITHUB_SHA::7}\`"
+          echo ""
+
+          # ── SAST ─────────────────────────────────────────────
+
+          echo "### 🛡️ Veracode Pipeline Scan — SAST"
+          echo ""
+
+          if [[ -f filtered_results.json ]]; then
+            BLOCKING="$(jq '[.findings[]?] | length' filtered_results.json)"
+            TOTAL="$(
+              if [[ -f results.json ]]; then
+                jq '[.findings[]?] | length' results.json
+              else
+                echo "$BLOCKING"
+              fi
+            )"
+            ACCEPTED=$((TOTAL - BLOCKING))
+
+            echo "Gate: \`$FAIL_ON_SEV\`"
             echo ""
-            echo "Gate: \`$FAIL_ON_SEV\` sobre findings **nuevos**. Total detectado: **$total**."
+            echo "| Métrica | Resultado |"
+            echo "|---|---:|"
+            echo "| Total detectado | $TOTAL |"
+            echo "| Nuevos bloqueantes | $BLOCKING |"
+            echo "| Aceptados por baseline | $ACCEPTED |"
             echo ""
-            if [ "$blocking" -gt 0 ]; then
-              echo "### 🔴 Nuevos — bloquean el merge"
+
+            if [[ "$BLOCKING" -gt 0 ]]; then
+              echo "### 🔴 Findings nuevos — bloquean el merge"
               echo ""
               echo "| Severidad | CWE | Tipo | Ubicación |"
               echo "|---|---|---|---|"
+
               jq -r --argjson sev "$SEVN" '
                 .findings[]? |
-                (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
+                (.files.source_file.file // "archivo desconocido") |
+                sub("^home/runner/work/[^/]+/[^/]+/"; "") as $path |
                 "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
               ' filtered_results.json | head -60
-              echo ""
             else
-              echo "✅ Sin findings **nuevos** en este PR — merge habilitado."
-              echo ""
+              echo "✅ **Sin findings nuevos bloqueantes.**"
             fi
-            if [ "$accepted" -gt 0 ]; then
+
+            if [[ "$ACCEPTED" -gt 0 && -f results.json ]]; then
               echo ""
               echo "<details>"
-              echo "<summary>🟡 $accepted aceptado(s) por baseline (no bloquean)</summary>"
+              echo "<summary>🟡 $ACCEPTED aceptado(s) por baseline</summary>"
               echo ""
               echo "| Severidad | CWE | Tipo | Ubicación |"
               echo "|---|---|---|---|"
-              jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
-                (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
+
+              jq -r --argjson sev "$SEVN" --slurpfile filtered filtered_results.json '
+                (($filtered[0].findings // [])
+                  | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blocking
                 | .findings[]?
-                | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
-                | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
+                | select(
+                    ("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")
+                    as $key
+                    | ($blocking | index($key))
+                    | not
+                  )
+                | (.files.source_file.file // "archivo desconocido")
+                | sub("^home/runner/work/[^/]+/[^/]+/"; "") as $path
                 | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
               ' results.json | head -60
+
               echo ""
               echo "</details>"
-              echo ""
             fi
+          else
+            echo "❌ **Pipeline Scan no generó resultados.**"
+            echo ""
+            echo "Revisá los logs del scanner, las credenciales VID/VKEY y los permisos de Veracode."
           fi
 
-          # 2. Reporte SCA
-          if [ -n "$SCA_OUTCOME" ] && [ "$SCA_OUTCOME" != "skipped" ]; then
-            if [ "$SCA_OUTCOME" != "success" ] && [ -z "$SCA_URL" ]; then
-              VERD="⚠️ Error de scan — no se completó (revisar SRCCLR_API_TOKEN)"
-            else
-              CNT=$(gh issue list -R "$GITHUB_REPOSITORY" --label "Veracode Dependency Scanning" --state open --json number --jq 'length' 2>/dev/null || echo "?")
-              case "$CNT" in
-                0)   VERD="✅ Sin dependencias vulnerables abiertas" ;;
-                "?") VERD="ℹ️ Ver Issues (no pude contar)" ;;
-                *)   VERD="🟠 $CNT dependencia(s) vulnerable(s) abierta(s) — ver Issues" ;;
-              esac
-            fi
+          # ── SCA ──────────────────────────────────────────────
 
-            echo "---"
-            echo "## 📦 Veracode **SCA** — dependencias vulnerables"
+          echo ""
+          echo "---"
+          echo ""
+          echo "### 📦 Veracode SCA — Dependencias"
+          echo ""
+
+          case "${SCA_OUTCOME:-skipped}" in
+            success)
+              SCA_STATUS="✅ Análisis SCA completado."
+              ;;
+            failure)
+              SCA_STATUS="❌ El análisis SCA falló. Revisá los logs del action."
+              ;;
+            cancelled)
+              SCA_STATUS="⚠️ El análisis SCA fue cancelado."
+              ;;
+            skipped)
+              if [[ -z "${{ inputs.srcclr-api-token }}" ]]; then
+                SCA_STATUS="ℹ️ SCA no ejecutado: no se configuró srcclr-api-token."
+              else
+                SCA_STATUS="ℹ️ SCA no ejecutado."
+              fi
+              ;;
+            *)
+              SCA_STATUS="ℹ️ Estado SCA: ${SCA_OUTCOME:-desconocido}."
+              ;;
+          esac
+
+          echo "$SCA_STATUS"
+          echo ""
+          echo "El análisis SCA revisa dependencias y no es un análisis SAST."
+
+          if [[ -n "$SCA_REPORT_URL" ]]; then
             echo ""
-            echo "Escaneo agent-based del árbol de dependencias (**no** es SAST). Estado: $VERD."
-            echo ""
-            echo "- Reporte completo: ${SCA_URL:-'(ver el log del job — sin url expuesta)'}"
-            echo "- Detalle por vulnerabilidad: [Issues con label \`Veracode Dependency Scanning\`](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)."
+            echo "- [Ver reporte completo de Veracode SCA]($SCA_REPORT_URL)"
           fi
+
+          echo ""
+          echo "- [Ver issues SCA](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)"
         } > pr_comment.md
 
-        gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body-file pr_comment.md || echo "no se pudo comentar el PR"
+        gh pr comment "$PR_NUMBER" \
+          --repo "$GITHUB_REPOSITORY" \
+          --body-file pr_comment.md \
+          || echo "::warning::No se pudo comentar el PR."
 
-    # ── GENERAR SUMMARY EN EL JOB (Unificado SAST + SCA) ─────────
+    # ── JOB SUMMARY ─────────────────────────────────────────────
+
     - name: Generar Job Summary
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && github.event_name != 'pull_request' && always() }}
+      if: ${{ always() && steps.configuration.outputs.is_dotnet == 'true' && github.event_name != 'pull_request' }}
       shell: bash
       env:
         FAIL_ON_SEV: ${{ inputs.fail-on-severity }}
-        SCA_URL:     ${{ steps.sca.outputs.scan-url }}
         SCA_OUTCOME: ${{ steps.sca.outcome }}
+        SCA_REPORT_URL: ${{ inputs.sca-report-url }}
       run: |
-        SEVN='{"5":"Very High","4":"High","3":"Medium","2":"Low","1":"Very Low","0":"Info"}'
+        set -Eeuo pipefail
 
         {
-          # 1. Reporte SAST
-          if [ -f filtered_results.json ]; then
-            blocking=$(jq '[.findings[]?] | length' filtered_results.json)
-            total=$([ -f results.json ] && jq '[.findings[]?] | length' results.json || echo "$blocking")
-            accepted=$(( total - blocking ))
+          echo "## 🔐 Veracode DevSecOps — Resultado del push"
+          echo ""
+          echo "| Campo | Valor |"
+          echo "|---|---|"
+          echo "| Rama | \`${GITHUB_REF_NAME}\` |"
+          echo "| Commit | \`${GITHUB_SHA::7}\` |"
+          echo "| Workflow | [Ver ejecución](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) |"
+          echo ""
 
-            echo "## 🛡️ Veracode Pipeline Scan (SAST) — Resumen de Ejecución (\`${GITHUB_REF_NAME}\`)"
+          # ── SAST ─────────────────────────────────────────────
+
+          echo "### 🛡️ Veracode Pipeline Scan — SAST"
+          echo ""
+
+          if [[ -f filtered_results.json ]]; then
+            BLOCKING="$(jq '[.findings[]?] | length' filtered_results.json)"
+            TOTAL="$(
+              if [[ -f results.json ]]; then
+                jq '[.findings[]?] | length' results.json
+              else
+                echo "$BLOCKING"
+              fi
+            )"
+            ACCEPTED=$((TOTAL - BLOCKING))
+
+            echo "Gate configurado: \`$FAIL_ON_SEV\`"
             echo ""
-            echo "Gate configurado: \`$FAIL_ON_SEV\` | Total detectado: **$total** (**$blocking** bloqueante(s), **$accepted** aceptado(s) por baseline)."
+            echo "| Métrica | Resultado |"
+            echo "|---|---:|"
+            echo "| Total detectado | $TOTAL |"
+            echo "| Nuevos bloqueantes | $BLOCKING |"
+            echo "| Aceptados por baseline | $ACCEPTED |"
             echo ""
-            if [ "$blocking" -gt 0 ]; then
-              echo "### 🔴 Findings bloqueantes"
-              echo ""
-              echo "| Severidad | CWE | Tipo | Ubicación |"
-              echo "|---|---|---|---|"
-              jq -r --argjson sev "$SEVN" '
-                .findings[]? |
-                (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path |
-                "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-              ' filtered_results.json | head -60
-              echo ""
-            else
+
+            if [[ "$BLOCKING" -eq 0 ]]; then
               echo "✅ **Sin vulnerabilidades bloqueantes en esta rama.**"
-              echo ""
+            else
+              echo "❌ **Se detectaron vulnerabilidades bloqueantes.**"
             fi
-            if [ "$accepted" -gt 0 ]; then
+
+            if [[ "$ACCEPTED" -gt 0 ]]; then
               echo ""
               echo "<details>"
-              echo "<summary>🟡 $accepted aceptado(s) por baseline</summary>"
+              echo "<summary>🟡 $ACCEPTED aceptado(s) por baseline</summary>"
               echo ""
-              echo "| Severidad | CWE | Tipo | Ubicación |"
-              echo "|---|---|---|---|"
-              jq -r --argjson sev "$SEVN" --slurpfile f filtered_results.json '
-                (($f[0].findings // []) | map("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)")) as $blk
-                | .findings[]?
-                | select(("\(.cwe_id)|\(.files.source_file.file)|\(.files.source_file.line)") as $k | ($blk | index($k)) | not)
-                | (.files.source_file.file | sub("^home/runner/work/[^/]+/[^/]+/"; "")) as $path
-                | "| \($sev[(.severity|tostring)] // (.severity|tostring)) | [CWE-\(.cwe_id)](https://cwe.mitre.org/data/definitions/\(.cwe_id).html) | \(.issue_type) | `\($path):\(.files.source_file.line)` |"
-              ' results.json | head -60
+              echo "Los findings aceptados por baseline no bloquean el gate, pero permanecen visibles en Security y en el artifact del pipeline."
               echo ""
               echo "</details>"
-              echo ""
             fi
+          else
+            echo "❌ **Pipeline Scan no generó resultados.**"
+            echo ""
+            echo "Revisá los logs del scanner, las credenciales VID/VKEY y los permisos de Veracode."
           fi
 
-          # 2. Reporte SCA
-          if [ -n "$SCA_OUTCOME" ] && [ "$SCA_OUTCOME" != "skipped" ]; then
-            if [ "$SCA_OUTCOME" != "success" ] && [ -z "$SCA_URL" ]; then
-              VERD="⚠️ Error de scan — no se completó (revisar SRCCLR_API_TOKEN)"
-            else
-              CNT=$(gh issue list -R "$GITHUB_REPOSITORY" --label "Veracode Dependency Scanning" --state open --json number --jq 'length' 2>/dev/null || echo "?")
-              case "$CNT" in
-                0)   VERD="✅ Sin dependencias vulnerables abiertas" ;;
-                "?") VERD="ℹ️ Ver Issues (no pude contar)" ;;
-                *)   VERD="🟠 $CNT dependencia(s) vulnerable(s) abierta(s) — ver Issues" ;;
-              esac
-            fi
+          # ── SCA ──────────────────────────────────────────────
 
-            echo "---"
-            echo "## 📦 Veracode **SCA** — dependencias vulnerables"
-            echo ""
-            echo "Escaneo agent-based del árbol de dependencias (**no** es SAST). Estado: $VERD."
-            echo ""
-            echo "- Reporte completo: ${SCA_URL:-'(ver el log del job — sin url expuesta)'}"
-            echo "- Detalle por vulnerabilidad: [Issues con label \`Veracode Dependency Scanning\`](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)."
+          echo ""
+          echo "---"
+          echo ""
+          echo "### 📦 Veracode SCA — Dependencias"
+          echo ""
+
+          case "${SCA_OUTCOME:-skipped}" in
+            success)
+              echo "✅ **Análisis SCA completado.**"
+              ;;
+            failure)
+              echo "❌ **El análisis SCA falló.** Revisá los logs del action."
+              ;;
+            cancelled)
+              echo "⚠️ **El análisis SCA fue cancelado.**"
+              ;;
+            skipped)
+              echo "ℹ️ **SCA no fue ejecutado.** No se configuró el token SRCCLR."
+              ;;
+            *)
+              echo "ℹ️ **Estado SCA:** \`${SCA_OUTCOME:-desconocido}\`."
+              ;;
+          esac
+
+          echo ""
+          echo "El análisis SCA revisa dependencias y no es un análisis SAST."
+          echo ""
+          echo "- [Ver issues SCA](https://github.com/$GITHUB_REPOSITORY/issues?q=is%3Aissue+is%3Aopen+label%3A%22Veracode+Dependency+Scanning%22)"
+
+          if [[ -n "$SCA_REPORT_URL" ]]; then
+            echo "- [Ver reporte completo de Veracode SCA]($SCA_REPORT_URL)"
           fi
         } >> "$GITHUB_STEP_SUMMARY"
 
-    # ── APLICAR GATE ───────────────────────────────────────────
-    - name: Aplicar gate
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && always() }}
+    # ── GATE SAST ──────────────────────────────────────────────
+
+    - name: Aplicar gate de Pipeline Scan
+      if: ${{ always() && steps.configuration.outputs.is_dotnet == 'true' }}
       shell: bash
       env:
         SCAN_OUTCOME: ${{ steps.scan.outcome }}
       run: |
-        if [ -f filtered_results.json ]; then
-          if [ "$SCAN_OUTCOME" = "success" ]; then
-            echo "✅ Sin findings bloqueantes."; exit 0
+        set -Eeuo pipefail
+
+        if [[ -f filtered_results.json ]]; then
+          if [[ "$SCAN_OUTCOME" == "success" ]]; then
+            echo "✅ Pipeline Scan completado sin findings bloqueantes."
+            exit 0
           fi
+
           echo "::error::Pipeline Scan encontró findings bloqueantes."
           exit 1
         fi
 
         case "$SCAN_OUTCOME" in
           cancelled)
-            echo "::error::Pipeline Scan cancelado (job timeout)."
+            echo "::error::Pipeline Scan fue cancelado."
             exit 1
             ;;
           skipped)
-            echo "::warning::Pipeline Scan fue skipped — revisá los logs del build."
-            exit 0
+            echo "::error::Pipeline Scan fue omitido porque falló un paso anterior."
+            exit 1
+            ;;
+          failure)
+            echo "::error::Pipeline Scan falló y no generó resultados."
+            echo "::error::Revisá VID/VKEY, permisos de Veracode y los logs del scanner."
+            exit 1
             ;;
           *)
-            echo "::error::Pipeline Scan sin resultados (outcome=$SCAN_OUTCOME). Causa probable: saturación del backend Veracode o secrets VID/VKEY inválidos."
+            echo "::error::Pipeline Scan no generó resultados."
+            echo "::error::Outcome recibido: $SCAN_OUTCOME"
             exit 1
             ;;
         esac
 
     # ── RESULTADO FINAL ────────────────────────────────────────
+
     - name: Publicar resultado
       id: result
       if: ${{ always() }}
@@ -493,6 +705,8 @@ runs:
         IS_DOTNET: ${{ steps.configuration.outputs.is_dotnet }}
       run: |
         set -Eeuo pipefail
+
         MATCHED="${IS_DOTNET:-false}"
+
         echo "workflow_matched=$MATCHED" >> "$GITHUB_OUTPUT"
         echo "Workflow matched: $MATCHED"
