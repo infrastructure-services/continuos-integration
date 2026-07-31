@@ -319,7 +319,7 @@ runs:
             github.ref_name == 'hotfix'
           )
         }}
-      uses: veracode/veracode-uploadandscan-action@0.2.7
+      uses: veracode/veracode-uploadandscan-action@0.2.11
       with:
         appname: ${{ steps.configuration.outputs.veracode_app_name }}
         createprofile: true
