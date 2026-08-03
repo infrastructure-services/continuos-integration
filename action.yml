@@ -309,7 +309,7 @@ runs:
 
     # ── POLICY SCAN: PUSH A MAIN / HOTFIX ─────────────────────
 
-    - name: Veracode Policy Scan (main/hotfix)
+    - name: Veracode Policy Scan
       if: >-
         ${{
           steps.configuration.outputs.is_dotnet == 'true' &&
