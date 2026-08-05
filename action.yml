@@ -65,6 +65,12 @@ inputs:
     description: URL opcional del reporte de Veracode SCA.
     required: false
     default: ''
+    
+  veracode-team:
+    description: Veracode team
+    required: false
+    default: ''
+    
 
 outputs:
   veracode-app-name:
@@ -326,6 +332,7 @@ runs:
         filepath: ${{ steps.package.outputs.package_path }}
         vid: ${{ inputs.veracode-api-id }}
         vkey: ${{ inputs.veracode-api-key }}
+        teams: ${{ inputs.veracode-team }}
 
     # ── SAST: PIPELINE SCAN ────────────────────────────────────
 
