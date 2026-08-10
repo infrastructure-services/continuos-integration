@@ -54,7 +54,7 @@ inputs:
   fail-on-severity:
     description: Severidades que bloquean el merge en Pipeline Scan.
     required: false
-    default: 'Very High, High, Medium'
+    default: 'Very High'
 
   scan-timeout:
     description: Tiempo máximo, en minutos, que Pipeline Scan espera al backend.
