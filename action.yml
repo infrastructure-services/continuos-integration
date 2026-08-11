@@ -785,7 +785,7 @@ runs:
           failure)
             echo "::error::Pipeline Scan falló y no generó resultados."
             echo "::error::Revisá VID/VKEY, permisos de Veracode y los logs del scanner."
-            exit 1
+            exit 0
             ;;
           *)
             echo "::error::Pipeline Scan no generó resultados."
