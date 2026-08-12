@@ -269,8 +269,7 @@ runs:
         dotnet publish "$SLN" \
           -c Release \
           -o publish \
-          --no-restore \
-          -p:UseAppHost=false
+          --no-restore
 
     - name: Empaquetar para Veracode
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
