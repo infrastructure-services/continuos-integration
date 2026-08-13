@@ -59,7 +59,7 @@ inputs:
   scan-timeout:
     description: Tiempo máximo, en minutos, que Pipeline Scan espera al backend.
     required: false
-    default: '25'
+    default: '45'
 
   sca-report-url:
     description: URL opcional del reporte de Veracode SCA.
