@@ -313,6 +313,11 @@ runs:
         echo "package_path=$GITHUB_WORKSPACE/veracode-package.zip" >> "$GITHUB_OUTPUT"
 
     # ── POLICY SCAN: PUSH A MAIN / HOTFIX ─────────────────────
+    # NOTA: en push a main/hotfix este Policy Scan corre y, a continuación,
+    # más abajo, también corre el Pipeline Scan sobre el mismo artefacto
+    # (dos subidas + dos análisis SAST en serie, en el mismo job). Confirmar
+    # con el equipo si ambos gates son necesarios en esas ramas o si el
+    # Pipeline Scan puede omitirse cuando ya corre el Policy Scan completo.
 
     - name: Veracode Policy Scan
       if: >-
@@ -342,8 +347,27 @@ runs:
         java-version: '11'
         distribution: temurin
 
-    - name: Descargar Pipeline Scanner
+    - name: Fecha para key de caché
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      id: pipeline-scan-date
+      shell: bash
+      run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Pipeline Scanner
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      id: cache-pipeline-scan
+      uses: actions/cache@v4
+      with:
+        path: pipeline-scan.jar
+        # Veracode recomienda descargar el ZIP en cada corrida para garantizar
+        # la última versión, pero también permite cachearlo localmente y
+        # refrescarlo a intervalos regulares. Usamos la fecha (AAAA-MM-DD)
+        # como parte de la key para refrescar la caché una vez por día en
+        # vez de descargar el JAR (~decenas de MB) en cada ejecución.
+        key: veracode-pipeline-scan-${{ runner.os }}-${{ steps.pipeline-scan-date.outputs.date }}
+
+    - name: Descargar Pipeline Scanner
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' && steps.cache-pipeline-scan.outputs.cache-hit != 'true' }}
       shell: bash
       run: |
         set -Eeuo pipefail
