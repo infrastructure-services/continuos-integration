@@ -1,5 +1,5 @@
 name: Andreani Veracode DevSecOps
-description: Build .NET, Pipeline Scan (SAST), Veracode SCA, SARIF, gate de PR, PR comment y Job Summary.
+description: Veracode Autopackager para .NET, Pipeline Scan (SAST), Policy Scan, SCA, SARIF, gate de PR, PR comment y Job Summary.
 
 inputs:
   project:
@@ -11,7 +11,7 @@ inputs:
     required: true
 
   workflow:
-    description: "Workflow a ejecutar. Valores soportados: '.NET', '.NET 8', '.NET 10'."
+    description: "Workflow a ejecutar. Valores soportados: '.NET', '.NET 6', '.NET 8', '.NET 10'."
     required: true
 
   veracode-api-id:
@@ -32,12 +32,12 @@ inputs:
     required: true
 
   solution:
-    description: Ruta de la solución .sln o .slnx. Si queda vacío, se autodetecta.
+    description: Input legacy. Se conserva por compatibilidad; Veracode Autopackager detecta los proyectos automáticamente.
     required: false
     default: ''
 
   dotnet-version:
-    description: Versión explícita del SDK .NET. Si queda vacío, se determina automáticamente.
+    description: Versión explícita del SDK .NET disponible para Autopackager. Si queda vacío, se determina desde workflow.
     required: false
     default: ''
 
@@ -47,7 +47,7 @@ inputs:
     default: 'https://nuget.pkg.github.com/architecture-it/index.json'
 
   first-party-prefix:
-    description: Prefijo de los ensamblados propios que se empaquetan para Veracode.
+    description: Input legacy. Se conserva por compatibilidad; Autopackager decide qué artefactos generar.
     required: false
     default: ''
 
@@ -126,7 +126,7 @@ runs:
         IS_DOTNET="false"
 
         case "$WORKFLOW" in
-          ".NET"|".NET 8"|".NET 10")
+          ".NET"|".NET 6"|".NET 8"|".NET 10")
             IS_DOTNET="true"
             ;;
         esac
@@ -141,57 +141,11 @@ runs:
         echo "App name Veracode   : $VERACODE_APP_NAME"
         echo "Es workflow .NET    : $IS_DOTNET"
 
-    # ── SOLUCIÓN Y SDK ─────────────────────────────────────────
+    # ── SDK Y VERACODE AUTOPACKAGER ────────────────────────────
 
-    - name: Detectar solución
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
-      id: solution
-      shell: bash
-      env:
-        INPUT_SOLUTION: ${{ inputs.solution }}
-      run: |
-        set -Eeuo pipefail
-
-        if [[ -n "$INPUT_SOLUTION" ]]; then
-          SLN="$INPUT_SOLUTION"
-
-          [[ -f "$SLN" ]] || {
-            echo "::error::La solución especificada no existe: $SLN"
-            exit 1
-          }
-        else
-          # Se prefiere .slnx por ser el formato moderno.
-          SLN="$(find . -maxdepth 5 -type f -name '*.slnx' | sort | head -1)"
-
-          if [[ -z "$SLN" ]]; then
-            SLN="$(find . -maxdepth 5 -type f -name '*.sln' | sort | head -1)"
-          fi
-
-          [[ -n "$SLN" ]] || {
-            echo "::error::No se encontró ningún archivo .sln ni .slnx."
-            echo "::error::Especificá el input 'solution'."
-            exit 1
-          }
-        fi
-
-        case "$SLN" in
-          *.slnx)
-            SOLUTION_FORMAT="slnx"
-            echo "::notice::Se detectó una solución .slnx: $SLN"
-            ;;
-          *.sln)
-            SOLUTION_FORMAT="sln"
-            echo "::notice::Se detectó una solución .sln: $SLN"
-            ;;
-          *)
-            echo "::error::La solución debe tener extensión .sln o .slnx: $SLN"
-            exit 1
-            ;;
-        esac
-
-        echo "sln=$SLN" >> "$GITHUB_OUTPUT"
-        echo "solution_format=$SOLUTION_FORMAT" >> "$GITHUB_OUTPUT"
-        echo "Solución seleccionada: $SLN"
+    # Setup .NET solamente garantiza que el SDK requerido exista en el runner.
+    # El action NO ejecuta restore/build/publish: esas tareas quedan a cargo
+    # de `veracode package`.
 
     - name: Seleccionar versión de .NET
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
@@ -200,24 +154,35 @@ runs:
       env:
         INPUT_DOTNET_VERSION: ${{ inputs.dotnet-version }}
         WORKFLOW: ${{ steps.configuration.outputs.workflow }}
-        SOLUTION_FORMAT: ${{ steps.solution.outputs.solution_format }}
       run: |
         set -Eeuo pipefail
 
         if [[ -n "$INPUT_DOTNET_VERSION" ]]; then
           DOTNET_VERSION="$INPUT_DOTNET_VERSION"
-        elif [[ "$SOLUTION_FORMAT" == "slnx" ]]; then
-          # .slnx requiere un SDK moderno.
-          DOTNET_VERSION="10.0.x"
-          echo "::notice::Se utilizará .NET SDK 10 para procesar la solución .slnx."
-        elif [[ "$WORKFLOW" == ".NET 10" ]]; then
-          DOTNET_VERSION="10.0.x"
         else
-          DOTNET_VERSION="8.0.x"
+          case "$WORKFLOW" in
+            ".NET 6")
+              DOTNET_VERSION="6.0.x"
+              ;;
+            ".NET 8")
+              DOTNET_VERSION="8.0.x"
+              ;;
+            ".NET 10")
+              DOTNET_VERSION="10.0.x"
+              ;;
+            ".NET")
+              # Mantiene el comportamiento histórico del action genérico.
+              DOTNET_VERSION="8.0.x"
+              ;;
+            *)
+              echo "::error::Workflow .NET no reconocido: $WORKFLOW"
+              exit 1
+              ;;
+          esac
         fi
 
         echo "dotnet_version=$DOTNET_VERSION" >> "$GITHUB_OUTPUT"
-        echo "SDK seleccionado: $DOTNET_VERSION"
+        echo "SDK disponible para Autopackager: $DOTNET_VERSION"
 
     - name: Setup .NET
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
@@ -228,7 +193,7 @@ runs:
       env:
         NUGET_AUTH_TOKEN: ${{ inputs.github_token }}
 
-    - name: Mostrar versión de .NET
+    - name: Mostrar toolchain .NET
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       shell: bash
       run: |
@@ -240,77 +205,118 @@ runs:
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.sln', '**/*.slnx', '**/global.json') }}
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.fsproj', '**/*.vbproj', '**/*.sln', '**/*.slnx', '**/global.json', '**/Directory.Packages.props') }}
         restore-keys: |
           nuget-${{ runner.os }}-
 
-    # ── BUILD Y PACKAGE ────────────────────────────────────────
-
-    - name: Restore
+    - name: Instalar Veracode CLI
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       shell: bash
-      env:
-        SLN: ${{ steps.solution.outputs.sln }}
-      run: |
-        set -Eeuo pipefail
-        dotnet restore "$SLN"
-
-    - name: Publish Release
-      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
-      shell: bash
-      env:
-        SLN: ${{ steps.solution.outputs.sln }}
       run: |
         set -Eeuo pipefail
 
-        rm -rf publish
-        mkdir -p publish
+        echo "[INFO] Instalando Veracode CLI..."
+        rm -f ./veracode
 
-        dotnet publish "$SLN" \
-          -c Release \
-          -o publish \
-          --no-restore
+        curl --fail --silent --show-error --location \
+          https://tools.veracode.com/veracode-cli/install \
+          | sh
 
-    - name: Empaquetar para Veracode
+        [[ -x ./veracode ]] || {
+          echo "::error::No se encontró el ejecutable ./veracode después de la instalación."
+          exit 1
+        }
+
+        echo "[INFO] Versión de Veracode CLI:"
+        ./veracode version
+
+    - name: Veracode Package Discover
+      if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
+      shell: bash
+      env:
+        VERACODE_API_KEY_ID: ${{ inputs.veracode-api-id }}
+        VERACODE_API_KEY_SECRET: ${{ inputs.veracode-api-key }}
+      run: |
+        set -Eeuo pipefail
+
+        echo "[INFO] Detectando proyectos y toolchains .NET..."
+        ./veracode package discover . --verbose
+
+        if [[ -f veracode.yml ]]; then
+          echo "[INFO] veracode.yml generado por Package Discover:"
+          cat veracode.yml
+        else
+          echo "::warning::Package Discover no generó veracode.yml."
+        fi
+
+    - name: Veracode Autopackage
       if: ${{ steps.configuration.outputs.is_dotnet == 'true' }}
       id: package
       shell: bash
       env:
-        FIRST_PARTY_PREFIX: ${{ inputs.first-party-prefix }}
+        VERACODE_API_KEY_ID: ${{ inputs.veracode-api-id }}
+        VERACODE_API_KEY_SECRET: ${{ inputs.veracode-api-key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
         set -Eeuo pipefail
 
-        rm -rf pkg veracode-package.zip
-        mkdir -p pkg
+        echo "[INFO] Ejecutando Veracode Autopackager..."
 
-        if [[ -n "$FIRST_PARTY_PREFIX" ]]; then
-          cp "publish/${FIRST_PARTY_PREFIX}"*.dll pkg/ 2>/dev/null || true
-          cp "publish/${FIRST_PARTY_PREFIX}"*.pdb pkg/ 2>/dev/null || true
-        else
-          cp publish/*.dll pkg/ 2>/dev/null || true
-          cp publish/*.pdb pkg/ 2>/dev/null || true
+        rm -rf dist
+        mkdir -p dist
+
+        ./veracode package \
+          --source . \
+          --trust \
+          --strict \
+          --output ./dist \
+          --verbose
+
+        echo "[INFO] Artefactos generados por Autopackager:"
+        find dist -maxdepth 2 -type f -printf '%p\n' | sort
+
+        mapfile -t PACKAGE_CANDIDATES < <(
+          find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f \
+            \( -name '*dotnet.zip' -o -name '*msvc.zip' \) \
+            | sort
+        )
+
+        if [[ "${#PACKAGE_CANDIDATES[@]}" -eq 0 ]]; then
+          mapfile -t PACKAGE_CANDIDATES < <(
+            find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name '*.zip' \
+              ! -name '*-js.zip' \
+              | sort
+          )
         fi
 
-        COUNT="$(find pkg -type f -name '*.dll' | wc -l | tr -d ' ')"
-
-        echo "Contenido del paquete ($COUNT DLL):"
-        find pkg -maxdepth 1 -type f -printf '%f\n' | sort
-
-        if [[ "$COUNT" -lt 1 ]]; then
-          echo "::error::Paquete vacío."
-          echo "::error::Revisá first-party-prefix y el contenido de publish/."
+        if [[ "${#PACKAGE_CANDIDATES[@]}" -eq 0 ]]; then
+          echo "::error::Veracode Autopackager no generó ningún ZIP .NET escaneable."
           exit 1
         fi
 
-        (
-          cd pkg
-          zip -r ../veracode-package.zip .
-        )
+        PACKAGE_PATH="${PACKAGE_CANDIDATES[0]}"
 
-        echo "Tamaño del paquete:"
-        du -h veracode-package.zip
+        if [[ "${#PACKAGE_CANDIDATES[@]}" -gt 1 ]]; then
+          echo "::warning::Autopackager generó múltiples ZIP candidatos. Pipeline Scan utilizará el primero:"
+          printf '  - %s\n' "${PACKAGE_CANDIDATES[@]}"
+        fi
 
-        echo "package_path=$GITHUB_WORKSPACE/veracode-package.zip" >> "$GITHUB_OUTPUT"
+        # Policy Scan sí puede recibir un directorio. Copiamos únicamente los
+        # artefactos .NET seleccionados para evitar subir paquetes auxiliares,
+        # por ejemplo un *-js.zip generado por Autopackager.
+        rm -rf dist-policy
+        mkdir -p dist-policy
+
+        for artifact in "${PACKAGE_CANDIDATES[@]}"; do
+          cp "$artifact" dist-policy/
+        done
+
+        echo "[INFO] Artefacto seleccionado para Pipeline Scan: $PACKAGE_PATH"
+        echo "[INFO] Artefactos enviados a Policy Scan:"
+        find dist-policy -maxdepth 1 -type f -printf '%p\n' | sort
+
+        echo "package_path=$PACKAGE_PATH" >> "$GITHUB_OUTPUT"
+        echo "package_directory=$GITHUB_WORKSPACE/dist-policy" >> "$GITHUB_OUTPUT"
 
     # ── POLICY SCAN: PUSH A MAIN / HOTFIX ─────────────────────
     # NOTA: en push a main/hotfix este Policy Scan corre y, a continuación,
@@ -333,7 +339,7 @@ runs:
       with:
         appname: ${{ steps.configuration.outputs.veracode_app_name }}
         createprofile: true
-        filepath: ${{ steps.package.outputs.package_path }}
+        filepath: ${{ steps.package.outputs.package_directory }}
         vid: ${{ inputs.veracode-api-id }}
         vkey: ${{ inputs.veracode-api-key }}
         teams: ${{ inputs.veracode-team }}
