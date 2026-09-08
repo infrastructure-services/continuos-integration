@@ -15,13 +15,20 @@ Composite GitHub Action to run lint, build, test and coverage for React/JS proje
 ### Example usage
 
 ```yaml
-uses: infrastructure-services/continuos-integration@net-10-mvc
-with:
-	matrix_version: "24.x"
-	packages_token: ${{ secrets.PACKAGES_TOKEN }}
-	pnpm_version: "11.x"
-	workdir: "./src/front" # With the WinMVC template its required to set workdir to the frontend folder, otherwise the action will fail.
-    github_username: ${{ secrets.GITHUB_USERNAME }}
-    github_token: ${{ secrets.GITHUB_TOKEN }}
+      uses: infrastructure-services/continuos-integration@net-mvc
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
+        dotnet-version: '10.0.x'
+        matrix_version: '24.x'
+        fontawesome_token: ${{ inputs.fontawesome_token }}
+        pnpm_version: '11.x'
+        workdir_frontend: './src/front'
 ```
 
