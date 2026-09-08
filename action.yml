@@ -30,7 +30,23 @@ inputs:
   dotnet-version: 
     description: "versiones de dotnet"
     required: false
-    default: "8.0.x"
+    default: "10.0.x"
+  matrix_version:
+    description: "versiones de node"
+    required: true
+    default: "24.x"
+  fontawesome_token:
+    description: "token de fontawesome"
+    required: true
+  pnpm_version:
+    description: "versiones de pnpm"
+    required: true
+    default: "11.x"
+
+  workdir_frontend:
+    description: "directorio donde se encuentra el frontend DEFAULT: ./src/front"
+    required: false
+    default: './src/front'
 runs:
   using: "composite"
   steps:
@@ -97,5 +113,19 @@ runs:
         shell: bash
         run: dotnet test --collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover --results-directory TestResults/ --logger "trx;LogFileName=unittests.trx" --no-build --no-restore --configuration release 
         working-directory: ${{ inputs.workdir_test }}
+
+
+      - name: "Build Frontend Application"
+        uses: infrastructure-services/continuos-integration@cicdv3-javascript-base
+        with:
+          matrix_version: ${{ inputs.matrix_version }}
+          packages_token: ${{ inputs.github_token }}
+          fontawesome_token: ${{ inputs.fontawesome_token }}
+          pnpm_version: ${{ inputs.pnpm_version }}
+          sentinel_url: ${{ inputs.sentinel_url }}
+          gitops_url: ${{ inputs.gitops_url }}
+          workdir: ${{ inputs.workdir_frontend }}
+
+          
         
 
