@@ -115,7 +115,7 @@ runs:
         working-directory: ${{ inputs.workdir_test }}
 
 
-      - name: "Build Frontend Application"
+      - name: "Build and Review Frontend Application"
         uses: infrastructure-services/continuos-integration@cicdv3-javascript-base
         with:
           matrix_version: ${{ inputs.matrix_version }}
