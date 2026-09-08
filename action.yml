@@ -40,21 +40,27 @@ inputs:
     description: "URL base de la UI de GitOps (sin trailing slash)"
     required: false
     default: "https://ui-gitops-test.apps.ocptest.andreani.com.ar"
+  workdir:
+    description: "Directorio de trabajo para ejecutar los comandos"
+    required: false
+    default: "."
 
 runs:
   using: "composite"
   steps:
     - name: Get package manager and install command
       run: |
-        if [ -f "yarn.lock" ]; then 
+        WORKDIR="${{ inputs.workdir }}"
+
+        if [ -f "$WORKDIR/yarn.lock" ]; then 
           echo "name=yarn" >> $GITHUB_OUTPUT 
           echo "command=yarn install --frozen-lockfile" >> $GITHUB_OUTPUT 
           echo "lock_file=yarn.lock" >> $GITHUB_OUTPUT
-        elif [ -f "package-lock.json" ]; then 
+        elif [ -f "$WORKDIR/package-lock.json" ]; then 
           echo "name=npm" >> $GITHUB_OUTPUT 
           echo "command=npm ci --no-progress --loglevel error" >> $GITHUB_OUTPUT 
           echo "lock_file=package-lock.json" >> $GITHUB_OUTPUT
-        elif [ -f pnpm-lock.yaml ]; then 
+        elif [ -f "$WORKDIR/pnpm-lock.yaml" ]; then 
           echo "name=pnpm" >> $GITHUB_OUTPUT 
           echo "command=pnpm install --frozen-lockfile" >> $GITHUB_OUTPUT 
           echo "lock_file=pnpm-lock.yaml" >> $GITHUB_OUTPUT
@@ -63,6 +69,7 @@ runs:
         fi
       id: package_manager
       shell: bash
+      working-directory: ${{ inputs.workdir }}
     - name: validate 'Lockfile'
       if: ${{ steps.package_manager.outputs.name == 'notfound' }}
       run: |
@@ -70,7 +77,8 @@ runs:
         echo "Asegurate de subirlo."
         echo "ERROR: Falta archivo lockfile. Ver más en https://architecture-it.github.io/docs/Platform/Front/#manejo-de-dependencias"
         exit 1
-      shell: bash    
+      shell: bash
+      working-directory: ${{ inputs.workdir }}
       # Use default with cache
 
       #Cambié a v6
@@ -85,7 +93,7 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.matrix_version }}
-        cache: ${{ steps.package_manager.outputs.name }}     
+        cache: ${{ steps.package_manager.outputs.name }}
     - name: Generate .npmrc file
       uses: architecture-it/actions@generate-npmrc
       with:
@@ -97,16 +105,16 @@ runs:
       uses: actions/cache@v5
       id: cache-node-modules
       with:
-        path: 'node_modules'
-        # key depends on package manager
-        key: deps-node-modules-${{ hashFiles(format('**/{0}', steps.package_manager.outputs.lock_file)) }}        
+        path: ${{ inputs.workdir }}/node_modules
+        key: deps-node-modules-${{ hashFiles(format('{0}/{1}', inputs.workdir, steps.package_manager.outputs.lock_file)) }}
         restore-keys: |
-          deps-node-modules-${{ hashFiles(format('**/{0}', steps.package_manager.outputs.lock_file)) }}
+          deps-node-modules-${{ hashFiles(format('{0}/{1}', inputs.workdir, steps.package_manager.outputs.lock_file)) }}
       if: inputs.cache == 'true'
     
     - name: Install dependencies
       run: ${{ steps.package_manager.outputs.command }}
       shell: bash
+      working-directory: ${{ inputs.workdir }}
       if: inputs.cache == 'false' || steps.cache-node-modules.outputs.cache-hit != 'true'
 
     - name: "Extract info from Package Json"
@@ -115,8 +123,11 @@ runs:
       with:
         script: |
           const fs = require('fs')
+          const path = require('path')
+          const workdir = '${{ inputs.workdir }}' || '.'
           try {
-            const jsonString = fs.readFileSync('./package.json', 'utf8');
+            const packageJsonPath = path.join(process.env.GITHUB_WORKSPACE, workdir, 'package.json')
+            const jsonString = fs.readFileSync(packageJsonPath, 'utf8');
             const json = JSON.parse(jsonString);
             const lint = json.scripts?.lint || '';
             const test = json.scripts?.test || '';
@@ -130,10 +141,12 @@ runs:
     - name: Lint
       run: ${{ steps.package_manager.outputs.name }} run lint
       shell: bash
+      working-directory: ${{ inputs.workdir }}
       if: ${{ inputs.skip_lint != 'true' && fromJson(steps.package.outputs.result).lint != '' }}
     - name: Build
       run: ${{ steps.package_manager.outputs.name }} run build
       shell: bash
+      working-directory: ${{ inputs.workdir }}
       env:
         CI: ${{ inputs.ci == 'true' }}
     - name: Get tests flags
@@ -149,9 +162,11 @@ runs:
         fi
       id: flags
       shell: bash
+      working-directory: ${{ inputs.workdir }}
     - name: Unit tests
       run: ${{ steps.package_manager.outputs.name }} run test ${{ fromJson(steps.package.outputs.result).extraSlash }} --coverage ${{ steps.flags.outputs.coverage_reporter }} ${{ steps.flags.outputs.tests_flags }}
       shell: bash
+      working-directory: ${{ inputs.workdir }}
       env:
         CI: ${{ inputs.ci == 'true' }}
       if: ${{ inputs.skip_test != 'true' }}
@@ -159,7 +174,7 @@ runs:
       uses: actions/upload-artifact@v6
       with:
         name: code-coverage-report
-        path: coverage
+        path: ${{ inputs.workdir }}/coverage
         overwrite: true
       if: ${{ inputs.skip_test != 'true' }}
 
