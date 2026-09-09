@@ -461,8 +461,8 @@ runs:
     - name: Generate .npmrc file
       uses: architecture-it/actions@generate-npmrc
       with:
-        npm_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
-        font_awesome_key: ${{ secrets.NPM_FONTAWESOME_KEY }}
+        npm_token: ${{ inputs.github_token }}
+        font_awesome_key: ${{ inputs.fontawesome_token }}
         working_directory: ${{ inputs.workdir_frontend }}
 
     - name: "Setup Node Environment"
