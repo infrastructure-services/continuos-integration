@@ -469,23 +469,23 @@ runs:
       uses: pnpm/action-setup@v2
       with:
         version: ${{ inputs.pnpm_version }}
-        
+
     - name: "Setup Node Environment"
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.matrix_version }}
-        cache: "pnpm"
-    
 
     - name: "Install Dependencies"
       shell: bash
-      working-directory: ${{ inputs.workdir_frontend }}
-      run: pnpm install
+      run: |
+        cd ${{ inputs.workdir_frontend }}
+        pnpm install
     
     - name: "Build Frontend Application"
       shell: bash
-      working-directory: ${{ inputs.workdir_frontend }}
-      run: pnpm build
+      run: |
+        cd ${{ inputs.workdir_frontend }}
+        pnpm build
 
 
           
