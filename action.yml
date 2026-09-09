@@ -465,16 +465,17 @@ runs:
         font_awesome_key: ${{ inputs.fontawesome_token }}
         working_directory: ${{ inputs.workdir_frontend }}
 
+    - name: "Setup pnpm"
+      uses: pnpm/action-setup@v2
+      with:
+        version: ${{ inputs.pnpm_version }}
+        
     - name: "Setup Node Environment"
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.matrix_version }}
         cache: "pnpm"
     
-    - name: "Setup pnpm"
-      uses: pnpm/action-setup@v2
-      with:
-        version: ${{ inputs.pnpm_version }}
 
     - name: "Install Dependencies"
       shell: bash
