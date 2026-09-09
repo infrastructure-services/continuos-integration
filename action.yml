@@ -98,6 +98,7 @@ runs:
       with:
         npm_token: ${{ inputs.packages_token }}
         font_awesome_key: ${{ inputs.fontawesome_token }}
+        working_directory: ${{ inputs.workdir }}
       if: ${{ inputs.packages_token != '' }}
 
     - name: 'Cache Node Modules Dependencies'
