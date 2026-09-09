@@ -458,16 +458,34 @@ runs:
             body
           })
 
-    - name: "Build and Review Frontend Application"
-      uses: infrastructure-services/continuos-integration@cicdv3-javascript-base
+    - name: Generate .npmrc file
+      uses: architecture-it/actions@generate-npmrc
       with:
-        matrix_version: ${{ inputs.matrix_version }}
-        packages_token: ${{ inputs.github_token }}
-        fontawesome_token: ${{ inputs.fontawesome_token }}
-        pnpm_version: ${{ inputs.pnpm_version }}
-        sentinel_url: ${{ inputs.sentinel_url }}
-        gitops_url: ${{ inputs.gitops_url }}
-        workdir: ${{ inputs.workdir_frontend }}
+        npm_token: ${{ secrets.ARQUITECTURA_DEPLOY }}
+        font_awesome_key: ${{ secrets.NPM_FONTAWESOME_KEY }}
+        working_directory: ${{ inputs.workdir_frontend }}
+
+    - name: "Setup Node Environment"
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.matrix_version }}
+        cache: "pnpm"
+    
+    - name: "Setup pnpm"
+      uses: pnpm/action-setup@v2
+      with:
+        version: ${{ inputs.pnpm_version }}
+
+    - name: "Install Dependencies"
+      shell: bash
+      working-directory: ${{ inputs.workdir_frontend }}
+      run: pnpm install
+    
+    - name: "Build Frontend Application"
+      shell: bash
+      working-directory: ${{ inputs.workdir_frontend }}
+      run: pnpm build
+
 
           
         
