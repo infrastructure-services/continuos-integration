@@ -50,17 +50,16 @@ runs:
   steps:
     - name: Get package manager and install command
       run: |
-        WORKDIR="${{ inputs.workdir }}"
 
-        if [ -f "$WORKDIR/yarn.lock" ]; then 
+        if [ -f "./yarn.lock" ]; then 
           echo "name=yarn" >> $GITHUB_OUTPUT 
           echo "command=yarn install --frozen-lockfile" >> $GITHUB_OUTPUT 
           echo "lock_file=yarn.lock" >> $GITHUB_OUTPUT
-        elif [ -f "$WORKDIR/package-lock.json" ]; then 
+        elif [ -f "./package-lock.json" ]; then 
           echo "name=npm" >> $GITHUB_OUTPUT 
           echo "command=npm ci --no-progress --loglevel error" >> $GITHUB_OUTPUT 
           echo "lock_file=package-lock.json" >> $GITHUB_OUTPUT
-        elif [ -f "$WORKDIR/pnpm-lock.yaml" ]; then 
+        elif [ -f "./pnpm-lock.yaml" ]; then 
           echo "name=pnpm" >> $GITHUB_OUTPUT 
           echo "command=pnpm install --frozen-lockfile" >> $GITHUB_OUTPUT 
           echo "lock_file=pnpm-lock.yaml" >> $GITHUB_OUTPUT
@@ -100,6 +99,7 @@ runs:
         npm_token: ${{ inputs.packages_token }}
         font_awesome_key: ${{ inputs.fontawesome_token }}
       if: ${{ inputs.packages_token != '' }}
+      working-directory: ${{ inputs.workdir }}
 
     - name: 'Cache Node Modules Dependencies'
       uses: actions/cache@v5
