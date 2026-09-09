@@ -67,7 +67,10 @@ inputs:
     description: "ScanId para consultar el Quality Gate en la API Sentinel"
     required: false
     default: 1
-  
+  workdir_frontend:
+    description: "directorio donde se encuentra el frontend DEFAULT: ./src/front"
+    required: false
+    default: './src/front'
 
 runs:
   using: "composite"
@@ -281,7 +284,7 @@ runs:
         matrix_version: '24.x'
         fontawesome_token: ${{ inputs.fontawesome_token }}
         pnpm_version: '11.x'
-        workdir_frontend: './src/front'
+        workdir_frontend: ${{ inputs.workdir_frontend }}
 
     - name: Mark matched (WinMVC)
       if: ${{ inputs.workflow == 'WinMVC' }}
