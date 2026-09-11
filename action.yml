@@ -254,14 +254,43 @@ runs:
       shell: bash
       run: pnpm install --dir "${{ github.action_path }}/configs" --lockfile=false
 
+    - name: Detect project ESLint config
+      id: eslint_project_config
+      shell: bash
+      working-directory: ${{ inputs.workdir }}
+      run: |
+        CONFIG_FILE=""
+        for candidate in eslint.config.js eslint.config.mjs eslint.config.cjs eslint.config.ts \
+          .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml .eslintrc.yaml; do
+          if [ -f "$candidate" ]; then
+            CONFIG_FILE="$candidate"
+            break
+          fi
+        done
+
+        if [ -n "$CONFIG_FILE" ]; then
+          echo "Se encontró configuración de ESLint propia del proyecto: $CONFIG_FILE"
+          echo "has_own_config=true" >> $GITHUB_OUTPUT
+        else
+          echo "El proyecto no tiene configuración de ESLint propia. Se usará el fallback (eslint-config-andreani)."
+          echo "has_own_config=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: Run ESLint – Quality Analysis
       continue-on-error: true
       shell: bash
+      working-directory: ${{ inputs.workdir }}
       run: |
-        npx eslint . \
-          --config "${{ github.action_path }}/configs/eslint-sentinel.config.mjs" \
-          --format json \
-          --output-file "${{ github.workspace }}/eslint-report.json" || true
+        if [ "${{ steps.eslint_project_config.outputs.has_own_config }}" = "true" ]; then
+          npx eslint . \
+            --format json \
+            --output-file "${{ github.workspace }}/eslint-report.json" || true
+        else
+          npx eslint . \
+            --config "${{ github.action_path }}/configs/eslint-sentinel.config.mjs" \
+            --format json \
+            --output-file "${{ github.workspace }}/eslint-report.json" || true
+        fi
 
     - name: Upload ESLint Analysis Report
       uses: actions/upload-artifact@v6
@@ -288,11 +317,15 @@ runs:
     - name: Run cloc – Code Metrics
       shell: bash
       run: |
+        # Solo código productivo: tests, mocks, snapshots y stories se excluyen
+        # para que "Volumen" no se infle con código de soporte de testing.
         cloc . \
           --json \
           --out="${{ github.workspace }}/cloc-report.json" \
-          --exclude-dir=node_modules,dist,build,coverage,.git,.github \
+          --vcs=git \
+          --exclude-dir=node_modules,dist,build,coverage,.git,.github,storybook-static,public,.next,out,.storybook,.nyc_output,cypress \
           --exclude-ext=json,lock \
+          --not-match-f='\.(test|spec)\.[jt]sx?$|\.stories\.[jt]sx?$|/__tests__/|/__mocks__/|/__snapshots__/' \
           --fullpath \
           --verbose=0
 
@@ -322,13 +355,16 @@ runs:
       continue-on-error: true
       shell: bash
       run: |
+        # Solo código productivo: la duplicación en tests (arrange/act/assert, mocks)
+        # es esperable y no debería contaminar la métrica de calidad principal.
         jscpd . \
           --reporters "json" \
           --output "${{ github.workspace }}/jscpd-report" \
           --min-lines 7 \
           --min-tokens 100 \
           --threshold 0 \
-          --ignore "**/node_modules/**,**/dist/**,**/build/**,**/.git/**,**/.github/**,**/coverage/**" \
+          --gitignore \
+          --ignore "**/node_modules/**,**/dist/**,**/build/**,**/.git/**,**/.github/**,**/coverage/**,**/storybook-static/**,**/public/**,**/.next/**,**/out/**,**/.storybook/**,**/__snapshots__/**,**/__mocks__/**,**/__tests__/**,**/*.test.*,**/*.spec.*,**/*.stories.*" \
           --format "javascript,typescript,jsx,tsx,css,scss,html"
 
     - name: Upload jscpd Report
@@ -427,7 +463,7 @@ runs:
         echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| 🧪 Cobertura de código | ${COVERAGE_PCT}% |" >> $GITHUB_STEP_SUMMARY
         echo "| ⚠️ Issues (ESLint) | ${ESLINT_ISSUES} |" >> $GITHUB_STEP_SUMMARY
-        echo "| 📋 Líneas duplicadas | ${DUPLICATED_LINES} (${DUPLICATE_PCT}%) |" >> $GITHUB_STEP_SUMMARY
+        echo "| 📋 Líneas duplicadas (código) | ${DUPLICATED_LINES} (${DUPLICATE_PCT}%) |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "Puede ver los detalles completos en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
 
@@ -457,7 +493,7 @@ runs:
           |---------|-------|
           | 🧪 Cobertura de código | ${process.env.COVERAGE_PCT}% |
           | ⚠️ Issues (ESLint) | ${process.env.ESLINT_ISSUES} |
-          | 📋 Líneas duplicadas | ${process.env.DUPLICATED_LINES} (${process.env.DUPLICATE_PCT}%) |
+          | 📋 Líneas duplicadas (código) | ${process.env.DUPLICATED_LINES} (${process.env.DUPLICATE_PCT}%) |
 
           Puede ver los detalles completos en [GitOps](${url})`
 
