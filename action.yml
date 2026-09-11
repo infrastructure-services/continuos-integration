@@ -189,6 +189,7 @@ runs:
         TRIGGERED_BY="${{ github.actor }}"
         PR_NUMBER="${{ github.event.pull_request.number }}"
         PR_TITLE="${{ github.event.pull_request.title }}"
+        SCAN_URL="${{ inputs.sentinel_url }}/api/v1/repository/${REPO_ID}/scans"
 
         BODY=$(jq -n \
           --arg branch        "$BRANCH" \
@@ -204,22 +205,52 @@ runs:
             triggeredBy:       $triggeredBy
           }')
 
+        echo "Request URL: $SCAN_URL"
         echo "Request body: $BODY"
 
-        RESPONSE=$(curl -s -X POST \
-          "${{ inputs.sentinel_url }}/api/v1/repository/${REPO_ID}/scans" \
+        # "|| CURL_EXIT=$?" evita que el "set -e" de GitHub Actions aborte el step
+        # sin loguear nada útil cuando curl falla a nivel de red (DNS, timeout, etc).
+        CURL_EXIT=0
+        HTTP_STATUS=$(curl -s -X POST \
+          "$SCAN_URL" \
           -H "Content-Type: application/json" \
-          -d "$BODY")
+          -d "$BODY" \
+          --connect-timeout 15 \
+          --max-time 60 \
+          -w "%{http_code}" \
+          -o sentinel_scan_response.json) || CURL_EXIT=$?
 
-        echo "Sentinel response: $RESPONSE"
+        if [ "$CURL_EXIT" -ne 0 ]; then
+          case "$CURL_EXIT" in
+            6)  REASON="No se pudo resolver el host (DNS). Revisá que 'sentinel_url' ($SCAN_URL) sea correcto y accesible desde el runner." ;;
+            7)  REASON="No se pudo conectar al host (¿servicio caído o bloqueado por firewall/VPN?)." ;;
+            28) REASON="Timeout: el servidor no respondió a tiempo." ;;
+            35) REASON="Error de conexión SSL/TLS." ;;
+            52) REASON="El servidor cerró la conexión sin devolver respuesta." ;;
+            56) REASON="Fallo al recibir datos del servidor." ;;
+            60) REASON="Problema con el certificado SSL del servidor." ;;
+            *)  REASON="Error de red no clasificado (ver https://curl.se/libcurl/c/libcurl-errors.html)." ;;
+          esac
+          echo "ERROR: curl falló con código ${CURL_EXIT} al llamar a Sentinel."
+          echo "Motivo: ${REASON}"
+          exit 1
+        fi
 
-        SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId')
+        RESPONSE=$(cat sentinel_scan_response.json 2>/dev/null || echo "")
+        echo "Sentinel response (HTTP ${HTTP_STATUS}): $RESPONSE"
+
+        if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+          echo "ERROR: Sentinel respondió con HTTP ${HTTP_STATUS} al crear el scan (esperado 2xx)."
+          exit 1
+        fi
+
+        SCAN_ID=$(echo "$RESPONSE" | jq -r '.scanId // empty')
         PROJECT_ID=$(echo "$RESPONSE" | jq -r '.projectId')
         APPLICATION_ID=$(echo "$RESPONSE" | jq -r '.applicationId')
         ORGANIZATION_ID=$(echo "$RESPONSE" | jq -r '.organizationId')
 
         if [ -z "$SCAN_ID" ] || [ "$SCAN_ID" = "null" ]; then
-          echo "ERROR: No se pudo obtener el scanId de Sentinel"
+          echo "ERROR: Sentinel respondió HTTP ${HTTP_STATUS} pero el body no trae 'scanId'."
           exit 1
         fi
 
