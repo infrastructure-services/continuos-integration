@@ -131,9 +131,10 @@ runs:
             const json = JSON.parse(jsonString);
             const lint = json.scripts?.lint || '';
             const test = json.scripts?.test || '';
+            const build = json.scripts?.build || '';
             const extraSlash = '${{ steps.package_manager.outputs.name }}' === 'pnpm' ? '' : '--';
 
-            return { lint, test, extraSlash }
+            return { lint, test, build, extraSlash }
           } catch(err) {
             core.error("Error while reading or parsing the 'package.json' file")
             core.setFailed(err.message)
@@ -149,6 +150,7 @@ runs:
       working-directory: ${{ inputs.workdir }}
       env:
         CI: ${{ inputs.ci == 'true' }}
+      if: ${{ fromJson(steps.package.outputs.result).build != '' }}
     - name: Get tests flags
       run: |
         if [ -f package.json ]; then
