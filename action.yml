@@ -231,21 +231,21 @@ runs:
       run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
       shell: bash
 
-
-    - name: Mark matched (React Native)
-      if: ${{ inputs.workflow == 'React Native' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration HTML"
-      if: ${{ inputs.workflow == 'html' }}
-      uses: infrastructure-services/continuos-integration@html-cicdv3
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        matrix_version: ${{ inputs.matrix_version }}
+# Comento la parte de html para React Native ya que se usa en Javascript Base
+#    - name: Mark matched (React Native)
+#      if: ${{ inputs.workflow == 'React Native' }}
+#      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+#      shell: bash
+#
+#    - name: "Continuos Integration HTML"
+#      if: ${{ inputs.workflow == 'html' }}
+#      uses: infrastructure-services/continuos-integration@html-cicdv3
+#      with:
+#        github_username: ${{ inputs.github_username }}
+#        github_token: ${{ inputs.github_token }}
+#        workdir_src: ${{ inputs.workdir_src }}
+#        workdir_test: ${{ inputs.workdir_test }}
+#        matrix_version: ${{ inputs.matrix_version }}
 
 
     - name: Mark matched (html)
