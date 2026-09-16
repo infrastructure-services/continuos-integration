@@ -1,26 +1,28 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-import { fixupConfigRules, fixupPluginRules } from "@eslint/compat";
-import prettier from "eslint-plugin-prettier";
-import _import from "eslint-plugin-import";
-import typescriptEslint from "@typescript-eslint/eslint-plugin";
-import tsParser from "@typescript-eslint/parser";
-import globals from "globals";
+import { defineConfig, globalIgnores } from "eslint/config";
 import js from "@eslint/js";
-import { FlatCompat } from "@eslint/eslintrc";
+import tseslint from "typescript-eslint";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+import globals from "globals";
+import eslintPluginImport from "eslint-plugin-import";
+import prettier from "eslint-plugin-prettier";
+import tsParser from "@typescript-eslint/parser";
 import jest from "eslint-plugin-jest";
 
-const ignores = [
-  "**/node_modules",
-  "**/storybook-static",
-  "**/dist",
-  "**/.next",
-  "**/coverage",
-  "**/build",
-  "**/public",
-  "**/__snapshots__",
-];
+// Config de fallback: solo se usa cuando el proyecto no trae su propia configuración de ESLint.
+// Alineada a @architecture-it/eslint-config-andreani (variante react-ts) para minimizar
+// diferencias respecto al linter que corren los proyectos localmente.
+
+const ignoredFolders = globalIgnores([
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/.next/**",
+  "**/build/**",
+  "**/out/**",
+  "**/coverage/**",
+  "**/storybook-static/**",
+  "next-env.d.ts",
+]);
 
 const basicRules = {
   "import/order": [
@@ -43,7 +45,7 @@ const basicRules = {
     "error",
     {
       singleQuote: false,
-      trailingComma: "all",
+      trailingComma: "es5",
       semi: true,
       tabWidth: 2,
       printWidth: 100,
@@ -119,56 +121,145 @@ const tsRules = {
   "@typescript-eslint/no-require-imports": "warn",
 };
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-  recommendedConfig: js.configs.recommended,
-  allConfig: js.configs.all,
-});
-
-/**
- * @type {import("eslint").Linter.Config[]}
- */
-export default [
-  {
-    ignores: ignores,
-  },
-  {
-    files: ["*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx", "*.test.js", "*.spec.js"],
-    ...jest.configs["flat/all"],
-    ignores: ignores,
-  },
-  ...fixupConfigRules(
-    compat.extends("plugin:prettier/recommended", "plugin:@typescript-eslint/recommended"),
-  ),
-  {
-    plugins: {
-      prettier: fixupPluginRules(prettier),
-      import: fixupPluginRules(_import),
-      "@typescript-eslint": fixupPluginRules(typescriptEslint),
+const reactRules = {
+  "react/self-closing-comp": "warn",
+  "react-hooks/rules-of-hooks": "warn",
+  "react/jsx-sort-props": [
+    "warn",
+    {
+      callbacksLast: true,
+      shorthandFirst: true,
+      noSortAlphabetically: false,
+      reservedFirst: true,
     },
-    ignores: ignores,
+  ],
+  "react/display-name": ["off", "always"],
+  "react/react-in-jsx-scope": ["off", "always"],
+  "react/jsx-no-useless-fragment": "warn",
+  "react/prop-types": "off",
+};
 
+export default defineConfig([
+  ignoredFolders,
+  {
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs"],
+    plugins: {
+      prettier,
+      import: eslintPluginImport,
+    },
+    rules: {
+      ...basicRules,
+    },
+  },
+  {
+    files: ["**/*.ts", "**/*.cts", "**/*.mts"],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
+    plugins: {
+      prettier,
+      import: eslintPluginImport,
+    },
     languageOptions: {
       globals: {
         ...globals.browser,
       },
-
       parser: tsParser,
       ecmaVersion: "latest",
       sourceType: "module",
-
+    },
+    rules: {
+      ...basicRules,
+      ...tsRules,
+    },
+  },
+  {
+    files: ["**/*.jsx"],
+    extends: [
+      reactHooks.configs.flat["recommended-latest"],
+      react.configs.flat?.recommended,
+      react.configs.flat?.["jsx-runtime"],
+    ],
+    plugins: {
+      react,
+      import: eslintPluginImport,
+      prettier,
+    },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        ...globals.browser,
+        ...globals.serviceworker,
+      },
       parserOptions: {
         ecmaFeatures: {
           jsx: true,
         },
       },
     },
-
+    settings: {
+      react: {
+        version: "detect",
+      },
+    },
+    rules: {
+      ...basicRules,
+      ...reactRules,
+    },
+  },
+  {
+    files: ["**/*.tsx"],
+    extends: [
+      tseslint.configs.recommended,
+      reactHooks.configs.flat["recommended-latest"],
+      react.configs.flat?.recommended,
+      react.configs.flat?.["jsx-runtime"],
+    ],
+    plugins: {
+      react,
+      import: eslintPluginImport,
+      prettier,
+    },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      parser: tsParser,
+      globals: {
+        ...globals.browser,
+        ...globals.serviceworker,
+      },
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
+    },
+    settings: {
+      react: {
+        version: "detect",
+      },
+    },
     rules: {
       ...basicRules,
       ...tsRules,
+      ...reactRules,
     },
   },
-];
+  {
+    files: ["*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx", "*.test.js", "*.spec.js"],
+    plugins: {
+      jest,
+      import: eslintPluginImport,
+      prettier,
+    },
+    languageOptions: {
+      globals: jest.environments.globals.globals,
+    },
+    rules: {
+      "jest/no-disabled-tests": "warn",
+      "jest/no-focused-tests": "warn",
+      "jest/no-identical-title": "warn",
+      "jest/prefer-to-have-length": "warn",
+      "jest/valid-expect": "warn",
+    },
+  },
+]);
