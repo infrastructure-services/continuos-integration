@@ -50,7 +50,7 @@ inputs:
     required: false
     default: '10'
 
-#Configuraciones de Sentinel
+  #Configuraciones de Sentinel
   sentinel_url:
     description: "URL base de la API de Sentinel (sin trailing slash)"
     required: false
@@ -77,7 +77,7 @@ runs:
   steps:
     - name: Check Application
       uses: infrastructure-services/continuos-integration@check-if-exists-app
-#Comento todo ya que sonar no va más
+
     - name: Init workflow match flag
       run: echo "WORKFLOW_MATCHED=false" >> $GITHUB_ENV
       shell: bash
