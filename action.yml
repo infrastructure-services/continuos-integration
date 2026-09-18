@@ -85,8 +85,7 @@ runs:
       uses: pnpm/action-setup@v6
       with:
         version: ${{ inputs.pnpm_version }}
-      if: ${{ steps.package_manager.outputs.name == 'pnpm' }}
-
+        
       #Cambie a v6
     - name: Use Node.js ${{ inputs.matrix_version }} - Cache ${{ steps.package_manager.outputs.name }}
       uses: actions/setup-node@v6
