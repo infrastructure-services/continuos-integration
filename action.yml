@@ -132,7 +132,7 @@ runs:
             const lint = json.scripts?.lint || '';
             const test = json.scripts?.test || '';
             const build = json.scripts?.build || '';
-            const extraSlash = '${{ steps.package_manager.outputs.name }}' === 'pnpm' ? '' : '--';
+            const extraSlash = '${{ steps.package_manager.outputs.name }}' === 'npm' ? '--' : '';
 
             return { lint, test, build, extraSlash }
           } catch(err) {
