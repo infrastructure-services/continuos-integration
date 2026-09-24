@@ -84,7 +84,7 @@ runs:
 
     - name: "Continuos Integration .NET"
       if: ${{ inputs.workflow == '.NET' }}
-      uses: infrastructure-services/continuos-integration@cicdv3-net-8
+      uses: infrastructure-services/continuos-integration@net-cicdv3
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
@@ -103,7 +103,7 @@ runs:
 
     - name: "Continuos Integration .NET 10"
       if: ${{ inputs.workflow == '.NET 10' }}
-      uses: infrastructure-services/continuos-integration@cicdv3-net-8
+      uses: infrastructure-services/continuos-integration@net-cicdv3
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
@@ -122,7 +122,7 @@ runs:
 
     - name: "Continuos Integration .NET 8"
       if: ${{ inputs.workflow == '.NET 8' }}
-      uses: infrastructure-services/continuos-integration@cicdv3-net-8
+      uses: infrastructure-services/continuos-integration@net-cicdv3
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
