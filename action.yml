@@ -24,21 +24,6 @@ inputs:
     required: false
     default: './'
 
-  # Sonarqube
-  sonar_url: 
-    description: "url sonarqube"
-    required: true
-  sonar_token: 
-    description: "token sonarqube"
-    required: true
-  sonar_custom:
-    description: "config sonar custom"
-    default: ""
-    required: false
-  sonar_tags:
-    description: "extra tags, ej: 'react-18, microfrontend'"
-    default: ""
-    required: false
 
   # Build
   version:
@@ -65,12 +50,34 @@ inputs:
     required: false
     default: '10'
 
+  #Configuraciones de Sentinel
+  sentinel_url:
+    description: "URL base de la API de Sentinel (sin trailing slash)"
+    required: false
+    default: "https://github-integration.andreani.com"
+  sentinel_sensor_id:
+    description: "ID del sensor en Sentinel al que se reportan los análisis"
+    required: false
+    default: "1"
+  gitops_url:
+    description: "URL base de la UI de GitOps (sin trailing slash)"
+    required: false
+    default: "https://gitops.andreani.com"
+  scan_id:
+    description: "ScanId para consultar el Quality Gate en la API Sentinel"
+    required: false
+    default: 1
+  workdir_frontend:
+    description: "directorio donde se encuentra el frontend DEFAULT: ./src/front"
+    required: false
+    default: './src/front'
+
 runs:
   using: "composite"
   steps:
     - name: Check Application
       uses: infrastructure-services/continuos-integration@check-if-exists-app
-#Comento todo ya que sonar no va más
+
     - name: Init workflow match flag
       run: echo "WORKFLOW_MATCHED=false" >> $GITHUB_ENV
       shell: bash
@@ -81,12 +88,13 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
+        dotnet-version: '6.0.x'
 
     - name: Mark matched (.NET)
       if: ${{ inputs.workflow == '.NET' }}
@@ -99,11 +107,12 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_custom: ${{ inputs.sonar_custom }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
         dotnet-version: '10.0.x'
 
     - name: Mark matched (.NET 10)
@@ -117,11 +126,12 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_custom: ${{ inputs.sonar_custom }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
         dotnet-version: '8.0.x'
 
     - name: Mark matched (.NET 8)
@@ -129,45 +139,41 @@ runs:
       run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
       shell: bash
 
-    - name: "Continuos Integration React"
-      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' }}
-      uses: infrastructure-services/continuos-integration@react-cicdv3-test
+    - name: "Continuos Integration Javascript"
+      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' || inputs.workflow == 'Next.js' || inputs.workflow == 'React Native' }}
+      uses: infrastructure-services/continuos-integration@javascript-cicdv3-test
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
         matrix_version: ${{ inputs.matrix_version }}
         fontawesome_token: ${{ inputs.fontawesome_token }}
         pnpm_version: ${{ inputs.pnpm_version }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        gitops_url: ${{ inputs.gitops_url }}
 
-    - name: Mark matched (React)
-      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' }}
+    - name: Mark matched (Javascript)
+      if: ${{ inputs.workflow == 'CRA' || inputs.workflow == 'Vite' || inputs.workflow == 'Rsbuild' || inputs.workflow == 'Next.js' || inputs.workflow == 'React Native' }}
       run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
       shell: bash
 
-    - name: "Continuos Integration Next.js"
-      if: ${{ inputs.workflow == 'Next.js' }}
-      uses: infrastructure-services/continuos-integration@nextjs
+    - name: "Continuos Integration Javascript Node24 y PNPM 11"
+      if: ${{ inputs.workflow == 'Node24' }}
+      uses: infrastructure-services/continuos-integration@javascript-cicdv3-test
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
-        matrix_version: ${{ inputs.matrix_version }}
+        matrix_version: '24.x'
         fontawesome_token: ${{ inputs.fontawesome_token }}
-        pnpm_version: ${{ inputs.pnpm_version }}
+        pnpm_version: '11.x'
+        sentinel_url: ${{ inputs.sentinel_url }}
+        gitops_url: ${{ inputs.gitops_url }}
 
-    - name: Mark matched (Next.js)
-      if: ${{ inputs.workflow == 'Next.js' }}
+    - name: Mark matched (Javascript)
+      if: ${{ inputs.workflow == 'Node24' }}
       run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
       shell: bash
 
@@ -177,12 +183,13 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
-        workdir_src: ${{ (inputs.workdir_src == './') && './src' || inputs.workdir_src }}
-        workdir_test: ${{ (inputs.workdir_test == './') && './src' || inputs.workdir_test }}
+        #Esto es así porque el setup de Go no acepta rutas relativas como cache de dependencias
+        workdir_src: ${{ (inputs.workdir_src == './') && '/src' || inputs.workdir_src }}
+        workdir_test: ${{ (inputs.workdir_test == './') && '/src' || inputs.workdir_test }}
+        ##
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
         go_version: ${{ inputs.go_version }}
 
     - name: Mark matched (Go)
@@ -196,13 +203,11 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
         version: ${{ inputs.version }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        gitops_url: ${{ inputs.gitops_url }}
 
     - name: Mark matched (Python)
       if: ${{ inputs.workflow == 'Python' || inputs.workflow == 'PythonData' }}
@@ -215,10 +220,8 @@ runs:
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        gitops_url: ${{ inputs.gitops_url }}
         workdir_src: ${{ inputs.workdir_src }}
         workdir_test: ${{ inputs.workdir_test }}
         version: '3.11.0'
@@ -228,34 +231,22 @@ runs:
       run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
       shell: bash
 
-    - name: "Continuos Integration React Native"
-      if: ${{ inputs.workflow == 'React Native' }}
-      uses: infrastructure-services/continuos-integration@react-native
-      with:
-        github_username: ${{ inputs.github_username }}
-        github_token: ${{ inputs.github_token }}
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
-        workdir_src: ${{ inputs.workdir_src }}
-        workdir_test: ${{ inputs.workdir_test }}
-        matrix_version: ${{ inputs.matrix_version }}
-        fontawesome_token: ${{ inputs.fontawesome_token }}
+# Comento la parte de html para React Native ya que se usa en Javascript Base
+#    - name: Mark matched (React Native)
+#      if: ${{ inputs.workflow == 'React Native' }}
+#      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+#      shell: bash
+#
+#    - name: "Continuos Integration HTML"
+#      if: ${{ inputs.workflow == 'html' }}
+#      uses: infrastructure-services/continuos-integration@html-cicdv3
+#      with:
+#        github_username: ${{ inputs.github_username }}
+#        github_token: ${{ inputs.github_token }}
+#        workdir_src: ${{ inputs.workdir_src }}
+#        workdir_test: ${{ inputs.workdir_test }}
+#        matrix_version: ${{ inputs.matrix_version }}
 
-    - name: Mark matched (React Native)
-      if: ${{ inputs.workflow == 'React Native' }}
-      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
-      shell: bash
-
-    - name: "Continuos Integration HTML"
-      if: ${{ inputs.workflow == 'html' }}
-      uses: infrastructure-services/continuos-integration@html
-      with:
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
 
     - name: Mark matched (html)
       if: ${{ inputs.workflow == 'html' }}
@@ -264,22 +255,45 @@ runs:
 
     - name: "Continuos Integration PHP"
       if: ${{ inputs.workflow == 'php' }}
-      uses: infrastructure-services/continuos-integration@php
+      uses: infrastructure-services/continuos-integration@php-cicdv3
       with:
-        sonar_url: ${{ inputs.sonar_url }}
-        sonar_token: ${{ inputs.sonar_token }}
-        sonar_tags: ${{ inputs.sonar_tags }}
-        sonar_custom: ${{ inputs.sonar_custom }}
-
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        matrix_version: ${{ inputs.matrix_version }}
+        
     - name: Mark matched (php)
       if: ${{ inputs.workflow == 'php' }}
+      run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
+      shell: bash
+
+    - name: "Continuos Integration .NET Windows MVC"
+      if: ${{ inputs.workflow == 'WinMVC' }}
+      uses: infrastructure-services/continuos-integration@net-mvc
+      with:
+        github_username: ${{ inputs.github_username }}
+        github_token: ${{ inputs.github_token }}
+        workdir_src: ${{ inputs.workdir_src }}
+        workdir_test: ${{ inputs.workdir_test }}
+        sentinel_url: ${{ inputs.sentinel_url }}
+        sentinel_sensor_id: ${{ inputs.sentinel_sensor_id }}
+        gitops_url: ${{ inputs.gitops_url }}
+        scan_id: ${{ inputs.scan_id }}
+        dotnet-version: '10.0.x'
+        matrix_version: '24.x'
+        fontawesome_token: ${{ inputs.fontawesome_token }}
+        pnpm_version: '11.x'
+        workdir_frontend: ${{ inputs.workdir_frontend }}
+
+    - name: Mark matched (WinMVC)
+      if: ${{ inputs.workflow == 'WinMVC' }}
       run: echo "WORKFLOW_MATCHED=true" >> $GITHUB_ENV
       shell: bash
 
     - name: Validation of Supported Workflows
       if: ${{ env.WORKFLOW_MATCHED != 'true' }}
       run: |
-        echo "::error title=❌ Unsupported workflow::'${{ inputs.workflow }}' no está soportado. Revisá la variable WORKFLOW_CI. Workflows soportados: .NET, .NET 8, .NET 10, CRA, Vite, Rsbuild, Next.js, Go, Python, PythonData, Python311, React Native, html, php."
+        echo "::error title=❌ Unsupported workflow::'${{ inputs.workflow }}' no está soportado. Contactar a Devops para revisar la variable WORKFLOW_CI. Workflows soportados: .NET, .NET 8, .NET 10, CRA, Vite, Rsbuild, Next.js, Node24, Go, Python, PythonData, Python311, React Native, html, php, WinMVC."
         exit 1
       shell: bash
-
