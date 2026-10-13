@@ -196,8 +196,7 @@ runs:
         --collect:"XPlat Code Coverage"
         /p:CollectCoverage=true
         /p:CoverletOutputFormat=cobertura
-        /p:CoverletOutput="${{ github.workspace }}/TestResults/coverlet/"
-        --results-directory "${{ github.workspace }}/TestResults"
+        /p:CoverletOutput="TestResults/coverlet/"
         --logger "trx;LogFileName=test-results.trx"
         -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       working-directory: ${{ inputs.workdir_test }}
@@ -209,7 +208,7 @@ runs:
         dotnet tool install -g dotnet-reportgenerator-globaltool || true
         export PATH="$HOME/.dotnet/tools:$PATH"
         reportgenerator \
-          "-reports:${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" \
+          "-reports:${{ inputs.workdir_test }}/**/coverage.cobertura.xml" \
           "-targetdir:${{ github.workspace }}/TestResults/merged" \
           "-reporttypes:Cobertura" \
           "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*"
