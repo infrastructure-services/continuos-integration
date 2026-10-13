@@ -196,6 +196,7 @@ runs:
         --collect:"XPlat Code Coverage"
         /p:CollectCoverage=true
         /p:CoverletOutputFormat=cobertura
+        /p:CoverletOutput="${{ github.workspace }}/TestResults/coverlet/"
         --results-directory "${{ github.workspace }}/TestResults"
         --logger "trx;LogFileName=test-results.trx"
         -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
