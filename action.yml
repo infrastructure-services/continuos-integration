@@ -191,7 +191,14 @@ runs:
       env:
         ASPNETCORE_ENVIRONMENT: Development
       shell: bash
-      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors[...]
+      run: >
+        dotnet test
+        --collect:"XPlat Code Coverage"
+        /p:CollectCoverage=true
+        /p:CoverletOutputFormat=cobertura
+        --results-directory "${{ github.workspace }}/TestResults"
+        --logger "trx;LogFileName=test-results.trx"
+        -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       working-directory: ${{ inputs.workdir_test }}
       continue-on-error: true
 
