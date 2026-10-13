@@ -174,11 +174,24 @@ runs:
       working-directory: ${{ inputs.workdir_src }}
       run: dotnet build --no-restore
 
+    - name: Ensure coverlet.collector is referenced
+      shell: bash
+      working-directory: ${{ inputs.workdir_test }}
+      run: |
+        for proj in $(find . -name "*.csproj" -path "*est*"); do
+          if ! grep -q "coverlet.collector" "$proj"; then
+            echo "⚠️ coverlet.collector no encontrado en $proj, agregando..."
+            dotnet add "$proj" package coverlet.collector
+          else
+            echo "✅ coverlet.collector ya referenciado en $proj"
+          fi
+        done
+
     - name: Test 
       env:
         ASPNETCORE_ENVIRONMENT: Development
       shell: bash
-      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors[...]
       working-directory: ${{ inputs.workdir_test }}
       continue-on-error: true
 
