@@ -25,6 +25,10 @@ inputs:
     description: "Versión de Go a instalar para el build"
     required: false
     default: 'stable'
+  golangci_lint_version:
+    description: "Versión de golangci-lint (binario v2.x). Debe estar compilada con un Go >= al go_version del proyecto, o el checker interno (go/types) panickea con 'file requires newer Go version'"
+    required: false
+    default: 'v2.14.0'
 
   # Sentinel
   sentinel_url:
@@ -223,7 +227,10 @@ runs:
         # con Go ≤1.24 y rechazan repos que targetean Go 1.26+). CLI v2 usa
         # --output.json.path. Repos con .golangci.yml v1 deben migrar al schema v2:
         # https://golangci-lint.run/product/migration-guide/
-        GOLANGCI_VERSION="v2.12.2"
+        # La versión de golangci-lint debe estar compilada con un Go >= al go_version
+        # del proyecto (go.mod `go` directive), si no el checker interno panickea con
+        # 'file requires newer Go version'. Configurable vía golangci_lint_version.
+        GOLANGCI_VERSION="${{ inputs.golangci_lint_version }}"
         curl -sSfL "https://raw.githubusercontent.com/golangci/golangci-lint/${GOLANGCI_VERSION}/install.sh" \
           | sh -s -- -b "$(go env GOPATH)/bin" "${GOLANGCI_VERSION}"
         export PATH="$(go env GOPATH)/bin:$PATH"
