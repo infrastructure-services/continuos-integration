@@ -250,10 +250,6 @@ runs:
         echo "Project ID: ${PROJECT_ID} | Application ID: ${APPLICATION_ID} | Organization ID: ${ORGANIZATION_ID}"
 
     # ── Calidad:  ───────────────────────────────────────────────────────
-    - name: Install ESLint Sentinel dependencies
-      shell: bash
-      run: pnpm install --dir "${{ github.action_path }}/configs" --lockfile=false
-
     - name: Detect project ESLint config
       id: eslint_project_config
       shell: bash
@@ -275,6 +271,12 @@ runs:
           echo "El proyecto no tiene configuración de ESLint propia. Se usará el fallback (eslint-config-andreani)."
           echo "has_own_config=false" >> $GITHUB_OUTPUT
         fi
+    
+    - name: Install ESLint Sentinel dependencies
+      shell: bash
+      run: pnpm install --dir "${{ github.action_path }}/configs" --lockfile=false
+      if: ${{ steps.eslint_project_config.outputs.has_own_config == 'false' }}
+
 
     - name: Run ESLint – Quality Analysis
       continue-on-error: true
