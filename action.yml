@@ -315,7 +315,7 @@ runs:
       working-directory: ${{ inputs.workdir }}
       run: |
         if [ "${{ steps.eslint_project_config.outputs.has_own_config }}" = "true" ]; then
-          npx eslint . \
+          pnpm eslint \
             --format json \
             --output-file "${{ github.workspace }}/eslint-report.json" || true
         else
