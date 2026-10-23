@@ -460,7 +460,8 @@ runs:
 
         ESLINT_FILE="${{ github.workspace }}/eslint-report.json"
         if [ -f "$ESLINT_FILE" ]; then
-          ESLINT_ISSUES=$(jq 'length' "$ESLINT_FILE" 2>/dev/null || echo "0")
+          # 'length' cuenta archivos analizados, no issues: hay que sumar los 'messages' de cada archivo
+          ESLINT_ISSUES=$(jq '[.[].messages[]] | length' "$ESLINT_FILE" 2>/dev/null || echo "0")
         else
           ESLINT_ISSUES="N/A"
         fi
