@@ -309,29 +309,6 @@ runs:
       run: pnpm install --dir "${{ github.action_path }}/configs" --lockfile=false
       if: ${{ steps.eslint_project_config.outputs.has_own_config == 'false' }}
 
-
-    - name: Detect project ESLint config
-      id: eslint_project_config
-      shell: bash
-      working-directory: ${{ inputs.workdir }}
-      run: |
-        CONFIG_FILE=""
-        for candidate in eslint.config.js eslint.config.mjs eslint.config.cjs eslint.config.ts \
-          .eslintrc.js .eslintrc.cjs .eslintrc.json .eslintrc.yml .eslintrc.yaml; do
-          if [ -f "$candidate" ]; then
-            CONFIG_FILE="$candidate"
-            break
-          fi
-        done
-
-        if [ -n "$CONFIG_FILE" ]; then
-          echo "Se encontró configuración de ESLint propia del proyecto: $CONFIG_FILE"
-          echo "has_own_config=true" >> $GITHUB_OUTPUT
-        else
-          echo "El proyecto no tiene configuración de ESLint propia. Se usará el fallback (eslint-config-andreani)."
-          echo "has_own_config=false" >> $GITHUB_OUTPUT
-        fi
-
     - name: Run ESLint – Quality Analysis
       continue-on-error: true
       shell: bash
