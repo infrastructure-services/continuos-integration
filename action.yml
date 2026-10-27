@@ -211,7 +211,8 @@ runs:
           "-reports:${{ inputs.workdir_test }}/**/coverage.cobertura.xml" \
           "-targetdir:${{ github.workspace }}/TestResults/merged" \
           "-reporttypes:Cobertura" \
-          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*"
+          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*" \
+          "-filefilters:-**/obj/**/*.cs;-**/bin/**/*.cs"
 
     - name: Send Coverage report to Sentinel
       continue-on-error: true
