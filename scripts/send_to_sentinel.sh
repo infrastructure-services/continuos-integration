@@ -26,6 +26,20 @@ echo "Response body:"
 cat sentinel_response.txt
 
 if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+  if [[ "${REPORT_PATH}" == *.sarif ]]; then
+    REPORT_ITEM_COUNT=$(jq '[.runs[]?.results[]?] | length' "${REPORT_PATH}")
+  elif [[ "${REPORT_PATH}" == *.json ]]; then
+    REPORT_ITEM_COUNT=$(jq 'if type == "array" then [.[].FileChanges[]?] | length else 0 end' "${REPORT_PATH}" 2>/dev/null || echo 0)
+  else
+    REPORT_ITEM_COUNT=0
+  fi
+  SENTINEL_ITEM_COUNT=$(jq -r '.itemCount // empty' sentinel_response.txt 2>/dev/null)
+
+  if [[ -n "${SENTINEL_ITEM_COUNT}" && "${REPORT_ITEM_COUNT}" -gt 0 && "${SENTINEL_ITEM_COUNT}" -eq 0 ]]; then
+    echo "⚠️ Sentinel aceptó el upload, pero registró 0 items aunque el reporte contiene ${REPORT_ITEM_COUNT} findings."
+    exit 1
+  fi
+
   echo "Upload OK"
 else
   echo "⚠️ WARNING: Sentinel respondió con HTTP ${HTTP_STATUS}. El reporte puede no haberse registrado, pero el workflow continúa."

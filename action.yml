@@ -308,6 +308,8 @@ runs:
           echo "⚠️ No se generó ningún SARIF. ¿El build corrió con SARIF_OUTPUT_DIR seteado?"
           echo '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"none"}},"results":[]}]}' > "$ROSLYN_OUT/roslyn.sarif"
           cp "$ROSLYN_OUT/roslyn.sarif" "$SONAR_OUT/sonar.sarif"
+          echo '[]' > "$ROSLYN_OUT/roslyn.json"
+          echo '[]' > "$SONAR_OUT/sonar.json"
           echo "roslyn_issues=0" >> $GITHUB_OUTPUT
           echo "sonar_issues=0" >> $GITHUB_OUTPUT
           exit 0
@@ -338,6 +340,30 @@ runs:
         jq -s --arg name "roslyn" --argjson sonar false "$SPLIT" "${FILES[@]}" > "$ROSLYN_OUT/roslyn.sarif"
         jq -s --arg name "sonar"  --argjson sonar true  "$SPLIT" "${FILES[@]}" > "$SONAR_OUT/sonar.sarif"
 
+        # Sentinel consume el formato JSON de `dotnet format --report`
+        # (array por archivo con FileChanges[]), no SARIF.
+        TO_JSON='
+          [ .runs[]?.results[]?
+            | (.locations[0].physicalLocation // {}) as $loc
+            | {
+                path: (($loc.artifactLocation.uri // "") | sub("^file://"; "")),
+                change: {
+                  LineNumber:        ($loc.region.startLine // 0),
+                  CharNumber:        ($loc.region.startColumn // 0),
+                  DiagnosticId:      (.ruleId // ""),
+                  FormatDescription: "\(.level // "warning") \(.ruleId // ""): \(.message.text // "")"
+                }
+              } ]
+          | group_by(.path)
+          | map({
+              FileName:    (.[0].path | split("/") | last),
+              FilePath:    .[0].path,
+              FileChanges: map(.change)
+            })'
+
+        jq "$TO_JSON" "$ROSLYN_OUT/roslyn.sarif" > "$ROSLYN_OUT/roslyn.json"
+        jq "$TO_JSON" "$SONAR_OUT/sonar.sarif"   > "$SONAR_OUT/sonar.json"
+
         ROSLYN_ISSUES=$(jq '[.runs[].results[]] | length' "$ROSLYN_OUT/roslyn.sarif")
         SONAR_ISSUES=$(jq  '[.runs[].results[]] | length' "$SONAR_OUT/sonar.sarif")
 
@@ -360,7 +386,9 @@ runs:
         name: static-analysis-sarif
         path: |
           ${{ github.workspace }}/roslyn-report/roslyn.sarif
+          ${{ github.workspace }}/roslyn-report/roslyn.json
           ${{ github.workspace }}/sonar-report/sonar.sarif
+          ${{ github.workspace }}/sonar-report/sonar.json
 
     - name: Send Roslyn report to Sentinel
       continue-on-error: true
@@ -369,7 +397,7 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "roslyn"
-        REPORT_PATH: ${{ github.workspace }}/roslyn-report/roslyn.sarif
+        REPORT_PATH: ${{ github.workspace }}/roslyn-report/roslyn.json
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
@@ -381,7 +409,7 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "sonar"
-        REPORT_PATH: ${{ github.workspace }}/sonar-report/sonar.sarif
+        REPORT_PATH: ${{ github.workspace }}/sonar-report/sonar.json
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
