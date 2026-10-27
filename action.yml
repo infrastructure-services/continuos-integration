@@ -122,7 +122,7 @@ runs:
 
     - name: "Continuos Integration .NET 8"
       if: ${{ inputs.workflow == '.NET 8' }}
-      uses: infrastructure-services/continuos-integration@net-8-cicdv3-test
+      uses: infrastructure-services/continuos-integration@cicdv3-net-8
       with:
         github_username: ${{ inputs.github_username }}
         github_token: ${{ inputs.github_token }}
