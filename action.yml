@@ -35,6 +35,18 @@ inputs:
     description: "ScanId para consultar el Quality Gate en la API Sentinel"
     required: true
     default: 1
+  netanalyzers_version:
+    description: "Versión del paquete Microsoft.CodeAnalysis.NetAnalyzers"
+    required: false
+    default: "8.0.0"
+  sonaranalyzer_version:
+    description: "Versión del paquete SonarAnalyzer.CSharp (reglas S####)"
+    required: false
+    default: "9.32.0.97167"
+  enable_sonar:
+    description: "Habilita el sensor sonar (SonarAnalyzer.CSharp). 'true' | 'false'"
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -135,19 +147,67 @@ runs:
         echo "Sentinel Scan creado con ID: ${SCAN_ID}"
         echo "Project ID: ${PROJECT_ID} | Application ID: ${APPLICATION_ID} | Organization ID: ${ORGANIZATION_ID}"
 
-    - name: Install Roslyn Analyzers
+    # ── Inyección de analyzers (Roslyn/NetAnalyzers + SonarAnalyzer) ─────────
+    # Se usa Directory.Build.targets (no .props) porque se importa DESPUÉS del
+    # proyecto: gana sobre cualquier configuración propia del repo y no se
+    # saltea la inyección en repos que ya tienen un Directory.Build.props.
+    - name: Inject Analyzers (Roslyn + Sonar)
       shell: bash
       working-directory: ${{ inputs.workdir_src }}
+      env:
+        NETANALYZERS_VERSION: ${{ inputs.netanalyzers_version }}
+        SONARANALYZER_VERSION: ${{ inputs.sonaranalyzer_version }}
+        ENABLE_SONAR: ${{ inputs.enable_sonar }}
       run: |
-        if [ ! -f Directory.Build.props ]; then
-          cat > Directory.Build.props << 'EOF'
+        SARIF_DIR="${{ github.workspace }}/sarif"
+        rm -rf "$SARIF_DIR" && mkdir -p "$SARIF_DIR"
+        echo "SARIF_OUTPUT_DIR=${SARIF_DIR}" >> $GITHUB_ENV
+        export SARIF_OUTPUT_DIR="$SARIF_DIR"
+
+        IMPORT_ORIGINAL=""
+        if [ -f Directory.Build.targets ]; then
+          echo "ℹ️ El repo ya tiene Directory.Build.targets: se preserva como Sentinel.Original.Build.targets y se importa."
+          mv Directory.Build.targets Sentinel.Original.Build.targets
+          IMPORT_ORIGINAL='  <Import Project="$(MSBuildThisFileDirectory)Sentinel.Original.Build.targets" />'
+        fi
+
+        SONAR_REF=""
+        if [ "${ENABLE_SONAR}" = "true" ]; then
+          SONAR_REF="    <PackageReference Include=\"SonarAnalyzer.CSharp\" Version=\"${SONARANALYZER_VERSION}\" PrivateAssets=\"all\" />"
+          echo "✅ Sensor sonar habilitado (SonarAnalyzer.CSharp ${SONARANALYZER_VERSION})."
+        else
+          echo "⏭️ Sensor sonar deshabilitado por input enable_sonar=false."
+        fi
+
+        cat > Directory.Build.targets << EOF
         <Project>
+        ${IMPORT_ORIGINAL}
+          <PropertyGroup>
+            <!-- Los analyzers sólo reportan: nunca deben romper el build. -->
+            <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+            <MSBuildTreatWarningsAsErrors>false</MSBuildTreatWarningsAsErrors>
+            <WarningsAsErrors></WarningsAsErrors>
+            <EnableNETAnalyzers>true</EnableNETAnalyzers>
+            <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+            <AnalysisLevel>latest</AnalysisLevel>
+            <AnalysisMode>Default</AnalysisMode>
+            <!--
+              ErrorLog emite SARIF 2.1 con TODOS los diagnósticos de la pasada de build
+              (a diferencia de 'dotnet format analyzers', que sólo reporta los que tienen
+              code fix aplicable y por eso dejaba afuera la mayoría de las reglas Sonar).
+              El archivo es por proyecto+TFM: en soluciones multi-proyecto uno solo se pisa.
+            -->
+            <ErrorLog Condition="'\$(SARIF_OUTPUT_DIR)' != ''">\$(SARIF_OUTPUT_DIR)/\$(MSBuildProjectName).\$(TargetFramework).sarif,version=2.1</ErrorLog>
+          </PropertyGroup>
           <ItemGroup>
-            <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" PrivateAssets="all" />
+            <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="${NETANALYZERS_VERSION}" PrivateAssets="all" />
+        ${SONAR_REF}
           </ItemGroup>
         </Project>
         EOF
-        fi
+
+        echo "── Directory.Build.targets generado ──"
+        cat Directory.Build.targets
 
     - name: Restore
       shell: bash
@@ -204,33 +264,82 @@ runs:
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
-    # ── Roslyn Analyzers ──────────────────────────────────────────────────────
-    - name: Run Roslyn Analyzers
+    # ── Análisis estático: partición del SARIF del build ─────────────────────
+    # El build ya emitió un SARIF por proyecto vía la propiedad ErrorLog.
+    # Se consolidan y se parten por prefijo de regla:
+    #   ^S[0-9]+$  → sensor "sonar"   (SonarAnalyzer.CSharp)
+    #   el resto   → sensor "roslyn"  (CA###/IDE###/CS### y analyzers de terceros)
+    # Partir por prefijo evita el solapamiento sin necesidad de dedupe posterior.
+    - name: Split SARIF by analyzer (roslyn / sonar)
+      id: sarif
       shell: bash
-      working-directory: ${{ inputs.workdir_src }}
       run: |
-        set +e
-        dotnet format analyzers \
-          --severity warn \
-          --verify-no-changes \
-          --report "${{ github.workspace }}/roslyn-report"
-        EXIT_CODE=$?
-        set -e
+        SARIF_DIR="${{ github.workspace }}/sarif"
+        ROSLYN_OUT="${{ github.workspace }}/roslyn-report"
+        SONAR_OUT="${{ github.workspace }}/sonar-report"
+        mkdir -p "$ROSLYN_OUT" "$SONAR_OUT"
 
-        if [ "$EXIT_CODE" -eq 0 ]; then
-          echo "✅ Roslyn Analyzers: no se encontraron issues."
-        elif [ "$EXIT_CODE" -eq 2 ]; then
-          echo "✅ Roslyn Analyzers: se encontraron issues/warnings. Ver roslyn-report/format-report.json para el detalle."
-        else
-          echo "❌ Error inesperado en dotnet format analyzers (exit code: $EXIT_CODE)."
-          exit "$EXIT_CODE"
+        mapfile -t FILES < <(find "$SARIF_DIR" -name '*.sarif' -type f 2>/dev/null)
+        echo "SARIF encontrados: ${#FILES[@]}"
+        printf '  %s\n' "${FILES[@]}"
+
+        if [ "${#FILES[@]}" -eq 0 ]; then
+          echo "⚠️ No se generó ningún SARIF. ¿El build corrió con SARIF_OUTPUT_DIR seteado?"
+          echo '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"none"}},"results":[]}]}' > "$ROSLYN_OUT/roslyn.sarif"
+          cp "$ROSLYN_OUT/roslyn.sarif" "$SONAR_OUT/sonar.sarif"
+          echo "roslyn_issues=0" >> $GITHUB_OUTPUT
+          echo "sonar_issues=0" >> $GITHUB_OUTPUT
+          exit 0
         fi
 
-    - name: Upload Roslyn Analysis Report
+        # $sonar == true  → se queda con las reglas S####
+        # $sonar == false → se queda con todo lo demás
+        SPLIT='
+          def key: [ (.ruleId // ""),
+                     (.locations[0].physicalLocation.artifactLocation.uri // ""),
+                     (.locations[0].physicalLocation.region.startLine // 0),
+                     (.locations[0].physicalLocation.region.startColumn // 0),
+                     (.message.text // "") ];
+          def isSonar: (.ruleId // "") | test("^S[0-9]+$");
+          [ .[] | .runs[]? ] as $runs
+          | ( [ $runs[] | .results[]? ]
+              | map(select(if $sonar then isSonar else (isSonar | not) end))
+              | unique_by(key) ) as $results
+          | ( [ $runs[] | .tool.driver.rules[]? ]
+              | map(select(((.id // "") | test("^S[0-9]+$")) == $sonar))
+              | unique_by(.id) ) as $rules
+          | {
+              version: "2.1.0",
+              "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+              runs: [ { tool: { driver: { name: $name, rules: $rules } }, results: $results } ]
+            }'
+
+        jq -s --arg name "roslyn" --argjson sonar false "$SPLIT" "${FILES[@]}" > "$ROSLYN_OUT/roslyn.sarif"
+        jq -s --arg name "sonar"  --argjson sonar true  "$SPLIT" "${FILES[@]}" > "$SONAR_OUT/sonar.sarif"
+
+        ROSLYN_ISSUES=$(jq '[.runs[].results[]] | length' "$ROSLYN_OUT/roslyn.sarif")
+        SONAR_ISSUES=$(jq  '[.runs[].results[]] | length' "$SONAR_OUT/sonar.sarif")
+
+        echo "✅ Roslyn: ${ROSLYN_ISSUES} findings → $ROSLYN_OUT/roslyn.sarif"
+        echo "✅ Sonar : ${SONAR_ISSUES} findings → $SONAR_OUT/sonar.sarif"
+
+        echo "── Top reglas Roslyn ──"
+        jq -r '[.runs[].results[].ruleId] | group_by(.) | map({rule: .[0], count: length})
+               | sort_by(-.count) | .[:15][] | "  \(.count)\t\(.rule)"' "$ROSLYN_OUT/roslyn.sarif"
+        echo "── Top reglas Sonar ──"
+        jq -r '[.runs[].results[].ruleId] | group_by(.) | map({rule: .[0], count: length})
+               | sort_by(-.count) | .[:15][] | "  \(.count)\t\(.rule)"' "$SONAR_OUT/sonar.sarif"
+
+        echo "roslyn_issues=${ROSLYN_ISSUES}" >> $GITHUB_OUTPUT
+        echo "sonar_issues=${SONAR_ISSUES}" >> $GITHUB_OUTPUT
+
+    - name: Upload SARIF reports
       uses: actions/upload-artifact@v6
       with:
-        name: roslyn-analysis-report
-        path: ${{ github.workspace }}/roslyn-report/format-report.json
+        name: static-analysis-sarif
+        path: |
+          ${{ github.workspace }}/roslyn-report/roslyn.sarif
+          ${{ github.workspace }}/sonar-report/sonar.sarif
 
     - name: Send Roslyn report to Sentinel
       continue-on-error: true
@@ -239,7 +348,19 @@ runs:
         SENTINEL_URL: ${{ inputs.sentinel_url }}
         SCAN_ID: ${{ env.SCAN_ID }}
         SENSOR_ID: "roslyn"
-        REPORT_PATH: ${{ github.workspace }}/roslyn-report/format-report.json
+        REPORT_PATH: ${{ github.workspace }}/roslyn-report/roslyn.sarif
+        IS_LAST_REPORT: "false"
+      run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
+
+    - name: Send Sonar report to Sentinel
+      if: ${{ inputs.enable_sonar == 'true' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        SENTINEL_URL: ${{ inputs.sentinel_url }}
+        SCAN_ID: ${{ env.SCAN_ID }}
+        SENSOR_ID: "sonar"
+        REPORT_PATH: ${{ github.workspace }}/sonar-report/sonar.sarif
         IS_LAST_REPORT: "false"
       run: bash "${{ github.action_path }}/scripts/send_to_sentinel.sh"
 
@@ -270,7 +391,7 @@ runs:
         cloc . \
           --json \
           --out="${{ github.workspace }}/cloc-report.json" \
-          --exclude-dir=bin,obj,.vs,.git,.github,TestResults,coverage-report,roslyn-report,packages \
+          --exclude-dir=bin,obj,.vs,.git,.github,TestResults,coverage-report,roslyn-report,sonar-report,sarif,packages \
           --exclude-ext=user,suo,DotSettings,nupkg \
           --not-match-f="\.(g\.cs|Designer\.cs|AssemblyInfo\.cs|gitignore|gitattributes|editorconfig|sln\.DotSettings)$" \
           --fullpath \
@@ -312,7 +433,7 @@ runs:
           --min-lines 10 \
           --min-tokens 100 \
           --threshold 0 \
-          --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/roslyn-report/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
+          --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/roslyn-report/**,**/sonar-report/**,**/sarif/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
           --format "csharp"
 
     - name: Upload jscpd Report
@@ -348,14 +469,23 @@ runs:
         fi
         echo "COVERAGE_PCT=${COVERAGE_PCT}" >> $GITHUB_ENV
 
-        # ── Total issues Roslyn ──
-        ROSLYN_FILE="${{ github.workspace }}/roslyn-report/format-report.json"
+        # ── Total issues Roslyn (CA/IDE/CS) ──
+        ROSLYN_FILE="${{ github.workspace }}/roslyn-report/roslyn.sarif"
         if [ -f "$ROSLYN_FILE" ]; then
-          ROSLYN_ISSUES=$(jq '[.[].FileChanges // [] | length] | add // 0' "$ROSLYN_FILE" 2>/dev/null || echo "0")
+          ROSLYN_ISSUES=$(jq '[.runs[].results[]] | length' "$ROSLYN_FILE" 2>/dev/null || echo "0")
         else
           ROSLYN_ISSUES="N/A"
         fi
         echo "ROSLYN_ISSUES=${ROSLYN_ISSUES}" >> $GITHUB_ENV
+
+        # ── Total issues Sonar (S####) ──
+        SONAR_FILE="${{ github.workspace }}/sonar-report/sonar.sarif"
+        if [ -f "$SONAR_FILE" ]; then
+          SONAR_ISSUES=$(jq '[.runs[].results[]] | length' "$SONAR_FILE" 2>/dev/null || echo "0")
+        else
+          SONAR_ISSUES="N/A"
+        fi
+        echo "SONAR_ISSUES=${SONAR_ISSUES}" >> $GITHUB_ENV
 
         # ── Líneas duplicadas desde jscpd ──
         JSCPD_FILE="${{ github.workspace }}/jscpd-report/jscpd-report.json"
@@ -388,6 +518,7 @@ runs:
         echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| 🧪 Cobertura de código | ${COVERAGE_PCT}% |" >> $GITHUB_STEP_SUMMARY
         echo "| ⚠️ Issues (Roslyn) | ${ROSLYN_ISSUES} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔎 Issues (Sonar) | ${SONAR_ISSUES} |" >> $GITHUB_STEP_SUMMARY
         echo "| 📋 Líneas duplicadas | ${DUPLICATED_LINES} (${DUPLICATE_PCT}%) |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "Puede ver los detalles completos en [GitOps](${URL})" >> $GITHUB_STEP_SUMMARY
@@ -403,6 +534,7 @@ runs:
         APPLICATION_ID: ${{ env.APPLICATION_ID }}
         COVERAGE_PCT: ${{ env.COVERAGE_PCT }}
         ROSLYN_ISSUES: ${{ env.ROSLYN_ISSUES }}
+        SONAR_ISSUES: ${{ env.SONAR_ISSUES }}
         DUPLICATED_LINES: ${{ env.DUPLICATED_LINES }}
         DUPLICATE_PCT: ${{ env.DUPLICATE_PCT }}
       with:
@@ -418,6 +550,7 @@ runs:
           |---------|-------|
           | 🧪 Cobertura de código | ${process.env.COVERAGE_PCT}% |
           | ⚠️ Issues (Roslyn) | ${process.env.ROSLYN_ISSUES} |
+          | 🔎 Issues (Sonar) | ${process.env.SONAR_ISSUES} |
           | 📋 Líneas duplicadas | ${process.env.DUPLICATED_LINES} (${process.env.DUPLICATE_PCT}%) |
 
           Puede ver los detalles completos en [GitOps](${url})`
