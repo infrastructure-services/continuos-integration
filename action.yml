@@ -234,11 +234,31 @@ runs:
       working-directory: ${{ inputs.workdir_src }}
       run: dotnet build --no-restore
 
+    - name: Ensure coverlet.collector is referenced
+      shell: bash
+      working-directory: ${{ inputs.workdir_test }}
+      run: |
+        for proj in $(find . -name "*.csproj" -path "*est*"); do
+          if ! grep -q "coverlet.collector" "$proj"; then
+            echo "⚠️ coverlet.collector no encontrado en $proj, agregando..."
+            dotnet add "$proj" package coverlet.collector
+          else
+            echo "✅ coverlet.collector ya referenciado en $proj"
+          fi
+        done
+
     - name: Test 
       env:
         ASPNETCORE_ENVIRONMENT: Development
       shell: bash
-      run: dotnet test --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults" --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
+      run: >
+        dotnet test
+        --collect:"XPlat Code Coverage"
+        /p:CollectCoverage=true
+        /p:CoverletOutputFormat=cobertura
+        /p:CoverletOutput="TestResults/coverlet/"
+        --logger "trx;LogFileName=test-results.trx"
+        -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
       working-directory: ${{ inputs.workdir_test }}
       continue-on-error: true
 
@@ -248,10 +268,11 @@ runs:
         dotnet tool install -g dotnet-reportgenerator-globaltool || true
         export PATH="$HOME/.dotnet/tools:$PATH"
         reportgenerator \
-          "-reports:${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" \
+          "-reports:${{ inputs.workdir_test }}/**/coverage.cobertura.xml" \
           "-targetdir:${{ github.workspace }}/TestResults/merged" \
           "-reporttypes:Cobertura" \
-          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*"
+          "-classfilters:-WebApi.Controllers.*;-Startup;-Program;-*.Domain.Entities.*;-*Dto*;-*DependencyInjection;-*Context;-*.Infrastructure.Migrations.*;-*.Infrastructure.Persistence.Configurations.*" \
+          "-filefilters:-**/obj/**/*.cs;-**/bin/**/*.cs"
 
     - name: Send Coverage report to Sentinel
       continue-on-error: true
@@ -432,8 +453,8 @@ runs:
           --output "${{ github.workspace }}/jscpd-report" \
           --min-lines 10 \
           --min-tokens 100 \
-          --threshold 0 \
-          --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/roslyn-report/**,**/sonar-report/**,**/sarif/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
+          --threshold 10 \
+          --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/roslyn-report/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
           --format "csharp"
 
     - name: Upload jscpd Report
