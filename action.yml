@@ -324,8 +324,13 @@ runs:
                      (.locations[0].physicalLocation.region.startColumn // 0),
                      (.message.text // "") ];
           def isSonar: (.ruleId // "") | test("^S[0-9]+$");
+          # Equivalente a `dotnet format analyzers --severity warn` (versión productiva):
+          # sólo warning/error y sin diagnósticos suprimidos en código (#pragma / SuppressMessage).
+          def isReportable: ((.level // "warning") | IN("warning", "error"))
+                            and ((.suppressions // []) | length == 0);
           [ .[] | .runs[]? ] as $runs
           | ( [ $runs[] | .results[]? ]
+              | map(select(isReportable))
               | map(select(if $sonar then isSonar else (isSonar | not) end))
               | unique_by(key) ) as $results
           | ( [ $runs[] | .tool.driver.rules[]? ]
