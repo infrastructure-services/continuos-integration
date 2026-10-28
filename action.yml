@@ -488,6 +488,7 @@ runs:
           --min-tokens 100 \
           --threshold 10 \
           --ignore "**/bin/**,**/obj/**,**/.vs/**,**/.git/**,**/.github/**,**/TestResults/**,**/coverage-report/**,**/roslyn-report/**,**/packages/**,**/*.Designer.cs,**/*.g.cs,**/*.AssemblyInfo.cs" \
+          --ignore-pattern "(?:^|\n)\s*(global\s+)?using\s+[^;]+;\s*(?=$|\n)" \
           --format "csharp"
 
     - name: Upload jscpd Report
