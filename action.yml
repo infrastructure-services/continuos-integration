@@ -173,7 +173,12 @@ runs:
 
         SONAR_REF=""
         if [ "${ENABLE_SONAR}" = "true" ]; then
-          SONAR_REF="    <PackageReference Include=\"SonarAnalyzer.CSharp\" Version=\"${SONARANALYZER_VERSION}\" PrivateAssets=\"all\" />"
+          SONAR_REF="    <PackageReference Remove=\"SonarAnalyzer.CSharp\" />
+            <PackageReference Include=\"SonarAnalyzer.CSharp\" PrivateAssets=\"all\">
+              <Version Condition=\"'\$(ManagePackageVersionsCentrally)' != 'true'\">${SONARANALYZER_VERSION}</Version>
+            </PackageReference>
+            <PackageVersion Remove=\"SonarAnalyzer.CSharp\" Condition=\"'\$(ManagePackageVersionsCentrally)' == 'true'\" />
+            <PackageVersion Include=\"SonarAnalyzer.CSharp\" Version=\"${SONARANALYZER_VERSION}\" Condition=\"'\$(ManagePackageVersionsCentrally)' == 'true'\" />"
           echo "✅ Sensor sonar habilitado (SonarAnalyzer.CSharp ${SONARANALYZER_VERSION})."
         else
           echo "⏭️ Sensor sonar deshabilitado por input enable_sonar=false."
@@ -200,7 +205,12 @@ runs:
             <ErrorLog Condition="'\$(SARIF_OUTPUT_DIR)' != ''">\$(SARIF_OUTPUT_DIR)/\$(MSBuildProjectName).\$(TargetFramework).sarif,version=2.1</ErrorLog>
           </PropertyGroup>
           <ItemGroup>
-            <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="${NETANALYZERS_VERSION}" PrivateAssets="all" />
+            <PackageReference Remove="Microsoft.CodeAnalysis.NetAnalyzers" />
+            <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all">
+              <Version Condition="'\$(ManagePackageVersionsCentrally)' != 'true'">${NETANALYZERS_VERSION}</Version>
+            </PackageReference>
+            <PackageVersion Remove="Microsoft.CodeAnalysis.NetAnalyzers" Condition="'\$(ManagePackageVersionsCentrally)' == 'true'" />
+            <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="${NETANALYZERS_VERSION}" Condition="'\$(ManagePackageVersionsCentrally)' == 'true'" />
         ${SONAR_REF}
           </ItemGroup>
         </Project>
