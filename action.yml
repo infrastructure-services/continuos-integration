@@ -104,6 +104,9 @@ runs:
       with:
         node-version: ${{ inputs.matrix_version }}
         cache: ${{ steps.package_manager.outputs.name }}
+      env:
+        ARQUITECTURA_DEPLOY: ${{ inputs.packages_token }}
+        NPM_FONTAWESOME_KEY: ${{ inputs.fontawesome_token }}
 
     - name: Generate .npmrc file
       uses: architecture-it/actions@generate-npmrc
