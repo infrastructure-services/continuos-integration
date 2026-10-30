@@ -82,7 +82,6 @@ runs:
 
       #Cambié a v6
     - name: Use pnpm Setup
-      if: ${{ steps.package_manager.outputs.name == 'pnpm' }}
       uses: pnpm/action-setup@v6
       with:
         version: ${{ inputs.pnpm_version }}
@@ -93,11 +92,13 @@ runs:
       with:
         node-version: ${{ inputs.matrix_version }}
 
+    # Enable Corepack for Yarn if using Yarn as package manager
     - name: Enable Corepack for Yarn
       if: ${{ steps.package_manager.outputs.name == 'yarn' }}
       run: corepack enable yarn
       shell: bash
 
+    # Configure package manager cache for Node.js dependencies
     - name: Configure package manager cache
       uses: actions/setup-node@v6
       with:
