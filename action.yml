@@ -82,20 +82,13 @@ runs:
 
       #Cambié a v6
     - name: Use pnpm Setup
+      if: ${{ steps.package_manager.outputs.name == 'pnpm' }}
       uses: pnpm/action-setup@v6
       with:
         version: ${{ inputs.pnpm_version }}
         
       #Cambie a v6
-    - name: Use Node.js ${{ inputs.matrix_version }} - Cache ${{ steps.package_manager.outputs.name }}
-      if: ${{ steps.package_manager.outputs.name != 'yarn' }}
-      uses: actions/setup-node@v6
-      with:
-        node-version: ${{ inputs.matrix_version }}
-        cache: ${{ steps.package_manager.outputs.name }}
-
-    - name: Use Node.js for Yarn
-      if: ${{ steps.package_manager.outputs.name == 'yarn' }}
+    - name: Use Node.js
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.matrix_version }}
@@ -104,6 +97,12 @@ runs:
       if: ${{ steps.package_manager.outputs.name == 'yarn' }}
       run: corepack enable yarn
       shell: bash
+
+    - name: Configure package manager cache
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.matrix_version }}
+        cache: ${{ steps.package_manager.outputs.name }}
 
     - name: Generate .npmrc file
       uses: architecture-it/actions@generate-npmrc
