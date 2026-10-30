@@ -87,11 +87,24 @@ runs:
         version: ${{ inputs.pnpm_version }}
         
       #Cambie a v6
-    - name: Use Node.js ${{ inputs.matrix_version }} - Cache ${{ steps.package_manager.outputs.name }}
+    - name: Use Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.matrix_version }}
+
+    # Enable Corepack for Yarn if using Yarn as package manager
+    - name: Enable Corepack for Yarn
+      if: ${{ steps.package_manager.outputs.name == 'yarn' }}
+      run: corepack enable yarn
+      shell: bash
+
+    # Configure package manager cache for Node.js dependencies
+    - name: Configure package manager cache
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.matrix_version }}
         cache: ${{ steps.package_manager.outputs.name }}
+
     - name: Generate .npmrc file
       uses: architecture-it/actions@generate-npmrc
       with:
@@ -114,6 +127,9 @@ runs:
       run: ${{ steps.package_manager.outputs.command }}
       shell: bash
       working-directory: ${{ inputs.workdir }}
+      env:
+        ARQUITECTURA_DEPLOY: ${{ inputs.packages_token }}
+        NPM_FONTAWESOME_KEY: ${{ inputs.fontawesome_token }}
       if: inputs.cache == 'false' || steps.cache-node-modules.outputs.cache-hit != 'true'
 
     - name: "Extract info from Package Json"
@@ -142,6 +158,9 @@ runs:
       run: ${{ steps.package_manager.outputs.name }} run lint
       shell: bash
       working-directory: ${{ inputs.workdir }}
+      env:
+        ARQUITECTURA_DEPLOY: ${{ inputs.packages_token }}
+        NPM_FONTAWESOME_KEY: ${{ inputs.fontawesome_token }}
       if: ${{ inputs.skip_lint != 'true' && fromJson(steps.package.outputs.result).lint != '' }}
     - name: Build
       run: ${{ steps.package_manager.outputs.name }} run build
@@ -149,6 +168,8 @@ runs:
       working-directory: ${{ inputs.workdir }}
       env:
         CI: ${{ inputs.ci == 'true' }}
+        ARQUITECTURA_DEPLOY: ${{ inputs.packages_token }}
+        NPM_FONTAWESOME_KEY: ${{ inputs.fontawesome_token }}
       if: ${{ fromJson(steps.package.outputs.result).build != '' }}
     - name: Get tests flags
       run: |
@@ -170,6 +191,8 @@ runs:
       working-directory: ${{ inputs.workdir }}
       env:
         CI: ${{ inputs.ci == 'true' }}
+        ARQUITECTURA_DEPLOY: ${{ inputs.packages_token }}
+        NPM_FONTAWESOME_KEY: ${{ inputs.fontawesome_token }}
       if: ${{ inputs.skip_test != 'true' }}
     - name: Archive code coverage results
       uses: actions/upload-artifact@v6
@@ -537,4 +560,3 @@ runs:
             issue_number: context.issue.number,
             body
           })
-
