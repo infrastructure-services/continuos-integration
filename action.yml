@@ -82,7 +82,7 @@ runs:
 
       #Cambié a v6
     - name: Use pnpm Setup
-      uses: pnpm/action-setup@v7
+      uses: pnpm/action-setup@v6
       with:
         version: ${{ inputs.pnpm_version }}
         
@@ -117,7 +117,7 @@ runs:
         working_directory: ${{ inputs.workdir }}
       if: ${{ inputs.packages_token != '' }}
 
-#Cambie a v7 
+#Cambie a v6
     - name: 'Cache Node Modules Dependencies'
       uses: actions/cache@v6
       id: cache-node-modules
