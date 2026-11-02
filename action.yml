@@ -86,12 +86,6 @@ runs:
       with:
         version: ${{ inputs.pnpm_version }}
         
-      #Cambie a v7 
-    - name: Use Node.js
-      uses: actions/setup-node@v7
-      with:
-        node-version: ${{ inputs.matrix_version }}
-
     # Enable Corepack for Yarn if using Yarn as package manager
     - name: Enable Corepack for Yarn
       if: ${{ steps.package_manager.outputs.name == 'yarn' }}
